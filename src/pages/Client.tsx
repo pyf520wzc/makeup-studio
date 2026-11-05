@@ -11,6 +11,8 @@ import {
   acceptPrivacy,
   hasPrivacyConsent,
 } from '../lib/privacy';
+import { FeatureNotes } from '../components/FeatureNotes';
+import { ReasonBlock } from '../components/ReasonBlock';
 import { Toast } from '../components/Toast';
 
 const OCCASIONS: Array<Occasion | ''> = [
@@ -27,11 +29,12 @@ const OCCASIONS: Array<Occasion | ''> = [
 export function Client() {
   const navigate = useNavigate();
   const data = useMemo(() => seedDemoIfEmpty(), []);
-  const [name, setName] = useState('新客户');
-  const [occasion, setOccasion] = useState<Occasion | ''>('约会');
-  const [avatar, setAvatar] = useState('');
+  const saved = data.sessions[0] ?? null;
+  const [name, setName] = useState(saved?.name ?? '新客户');
+  const [occasion, setOccasion] = useState<Occasion | ''>(saved?.occasion ?? '约会');
+  const [avatar, setAvatar] = useState(saved?.avatarDataUrl ?? '');
   const [analyzing, setAnalyzing] = useState(false);
-  const [session, setSession] = useState<ClientSession | null>(null);
+  const [session, setSession] = useState<ClientSession | null>(saved);
   const [toast, setToast] = useState('');
   const [privacyOk, setPrivacyOk] = useState(hasPrivacyConsent());
   const [privacyChecked, setPrivacyChecked] = useState(hasPrivacyConsent());
@@ -49,6 +52,18 @@ export function Client() {
     const top = scoredWorks.slice(0, 3).map((s) => s.work);
     return recommendInventory(session.analysis, data.inventory, top, occasion);
   }, [session, data.inventory, scoredWorks, occasion]);
+
+  const recommendedWorks = useMemo(() => {
+    const ids = new Set(session?.recommendedWorkIds ?? []);
+    const picked = scoredWorks.filter((item) => ids.has(item.work.id));
+    return picked.length ? picked : scoredWorks.slice(0, 4);
+  }, [scoredWorks, session]);
+
+  const recommendedInv = useMemo(() => {
+    const ids = new Set(session?.recommendedInventoryIds ?? []);
+    const picked = scoredInv.filter((item) => ids.has(item.item.id));
+    return picked.length ? picked : scoredInv.slice(0, 4);
+  }, [scoredInv, session]);
 
   const acceptAndContinue = () => {
     if (!privacyChecked) {
@@ -133,6 +148,7 @@ export function Client() {
         },
         status: 'draft',
         notes: '',
+        occasion: occasion || undefined,
         createdAt: new Date().toISOString(),
       };
       upsertSession(next);
@@ -282,7 +298,7 @@ export function Client() {
             )}
           </button>
           <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-            当前为浏览器端启发式演示（肤色/明度/对比 + 脸型比例）。结论均为「参考」，非专业诊断。
+            分析会读取这张照片的眼、眉、鼻、唇、轮廓和肤色分区，并写出具体特点和推荐理由。结果是浏览器端估算，只作沟通参考。
           </p>
         </section>
 
@@ -301,14 +317,7 @@ export function Client() {
                     置信度约 {Math.round(session.analysis.confidence * 100)}%
                   </span>
                 </div>
-                <div className="list-block">
-                  <h3>妆造建议方向（参考）</h3>
-                  <ul>
-                    {session.analysis.directions.map((s) => (
-                      <li key={s}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
+                <FeatureNotes analysis={session.analysis} />
                 <div className="cta-row">
                   <button
                     type="button"
@@ -335,7 +344,7 @@ export function Client() {
             </div>
           </div>
           <div className="card-grid" style={{ marginBottom: 28 }}>
-            {scoredWorks.slice(0, 4).map(({ work, score, reasons }) => (
+            {recommendedWorks.map(({ work, score, reasons }) => (
               <article key={work.id} className="panel work-card" style={{ padding: 0 }}>
                 <div className="thumb">
                   <img src={work.imageDataUrl} alt={work.title} />
@@ -345,17 +354,41 @@ export function Client() {
                     <strong>{work.title}</strong>
                     <span className="tag score">{score}%</span>
                   </div>
-                  <p className="muted" style={{ margin: 0, fontSize: 13 }}>
-                    {reasons.join(' · ')}
-                  </p>
+                  <ReasonBlock reasons={reasons} />
                 </div>
               </article>
             ))}
           </div>
-          {scoredInv.length > 0 && (
-            <p className="muted" style={{ fontSize: 13 }}>
-              已预选库存草稿 {Math.min(3, scoredInv.length)} 件 · 在试妆页可改
-            </p>
+          {recommendedInv.length > 0 && (
+            <>
+              <div className="section-head">
+                <div>
+                  <h2>推荐服装 / 饰品</h2>
+                  <p className="muted" style={{ margin: 0 }}>
+                    每件都附推荐理由，试妆页可以改
+                  </p>
+                </div>
+              </div>
+              <div className="card-grid" style={{ marginBottom: 28 }}>
+                {recommendedInv.map(({ item, score, reasons }) => (
+                  <article key={item.id} className="panel work-card" style={{ padding: 0 }}>
+                    <div className="thumb">
+                      <img src={item.imageDataUrl} alt={item.name} />
+                    </div>
+                    <div className="body">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <strong>{item.name}</strong>
+                        <span className="tag score">{score}%</span>
+                      </div>
+                      <div className="tag-row">
+                        <span className="tag gold">{item.category}</span>
+                      </div>
+                      <ReasonBlock reasons={reasons} />
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </>
           )}
         </>
       )}

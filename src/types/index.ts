@@ -33,6 +33,8 @@ export interface WorkItem {
   id: string;
   title: string;
   imageDataUrl: string;
+  /** 可选短片，公网路径如 /assets/videos/xxx.mp4 */
+  videoUrl?: string;
   styles: MakeupStyle[];
   occasions: Occasion[];
   makeupType: string;
@@ -48,11 +50,35 @@ export interface InventoryItem {
   name: string;
   category: '服装' | '饰品' | '假发' | '道具';
   imageDataUrl: string;
+  /** 可选短片，公网路径如 /assets/videos/xxx.mp4 */
+  videoUrl?: string;
   colors: string[];
   styles: string[];
   occasions: Occasion[];
   notes: string;
   createdAt: string;
+}
+
+/** 照片分区测量后的五官说明（参考，不是医学结论） */
+export interface FacialFeatureNote {
+  part: '眼' | '眉' | '鼻' | '唇' | '轮廓' | '肤色';
+  text: string;
+}
+
+/** 供推荐理由引用的测量值，单位为 0–255 明度或相对比例 */
+export interface AnalysisCues {
+  eyeDelta: number;
+  eyeContrast: number;
+  eyeAsymmetry: number;
+  browContrast: number;
+  noseHighlight: number;
+  noseWidth: number;
+  lipRedness: number;
+  faceRatio: number;
+  foreheadWidth: number;
+  cheekWidth: number;
+  jawWidth: number;
+  usedSkinMask: boolean;
 }
 
 export interface FeatureAnalysis {
@@ -61,6 +87,12 @@ export interface FeatureAnalysis {
   strengths: string[];
   weaknesses: string[];
   directions: string[];
+  /** 一段把测量结果连起来的说明 */
+  summary?: string;
+  /** 眼、眉、鼻、唇、轮廓、肤色的具体描述 */
+  featureDetails?: FacialFeatureNote[];
+  /** 分区测量，推荐文案会引用这些数字 */
+  cues?: AnalysisCues;
   brightness: number;
   warmth: number;
   contrast: number;
@@ -86,6 +118,8 @@ export interface ClientSession {
   /** 化妆师还原完成后的实拍与还原度 */
   restoration?: RestorationRecord;
   notes: string;
+  /** 分析时选择的场合，试妆页据此写推荐理由 */
+  occasion?: Occasion;
   createdAt: string;
 }
 

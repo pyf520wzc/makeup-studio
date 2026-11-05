@@ -9,9 +9,12 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { FeatureNotes } from '../components/FeatureNotes';
+import { ReasonBlock } from '../components/ReasonBlock';
 import { TryOnPreview } from '../components/TryOnPreview';
 import { Toast } from '../components/Toast';
 import { compressImage, readFileAsDataUrl } from '../lib/file';
+import { recommendInventory, recommendWorks } from '../lib/recommend';
 import { loadData, seedDemoIfEmpty, upsertSession } from '../lib/storage';
 import { trackEvent } from '../lib/analytics';
 import type { ClientSession, InventoryItem, WorkItem } from '../types';
@@ -127,6 +130,25 @@ export function TryOn() {
     const preferred = all.filter((i) => ids.has(i.id));
     return preferred.length ? preferred : all;
   }, [invSource, activeSession, data.inventory]);
+
+  const occasion = activeSession?.occasion ?? '';
+  const workScores = useMemo(() => {
+    if (!activeSession) return [];
+    return recommendWorks(activeSession.analysis, data.works, occasion);
+  }, [activeSession, data.works, occasion]);
+  const invScores = useMemo(() => {
+    if (!activeSession) return [];
+    const top = workScores.slice(0, 3).map((item) => item.work);
+    return recommendInventory(activeSession.analysis, data.inventory, top, occasion);
+  }, [activeSession, data.inventory, workScores, occasion]);
+  const workReason = useMemo(
+    () => new Map(workScores.map((item) => [item.work.id, item.reasons])),
+    [workScores],
+  );
+  const invReason = useMemo(
+    () => new Map(invScores.map((item) => [item.item.id, item.reasons])),
+    [invScores],
+  );
 
   const selectedWork = data.works.find((w) => w.id === workId) ?? null;
   const selectedClothing =
@@ -265,6 +287,17 @@ export function TryOn() {
         {isConfirmed && !dirty && <span className="tag score">已确认</span>}
       </div>
 
+      {activeSession && (
+        <details className="panel feature-fold" open>
+          <summary>
+            本次五官特点（参考）· {activeSession.analysis.faceShape} ·{' '}
+            {activeSession.analysis.skinTone}
+            {activeSession.occasion ? ` · ${activeSession.occasion}` : ''}
+          </summary>
+          <FeatureNotes analysis={activeSession.analysis} />
+        </details>
+      )}
+
       <div className="tryon-layout">
         <aside className="panel tryon-side">
           <h3>
@@ -394,6 +427,24 @@ export function TryOn() {
             <Sparkles size={14} style={{ verticalAlign: '-2px' }} />{' '}
             切换下方造型/服装/饰品时，预览会实时更新
           </p>
+          <ClipRow
+            clips={[
+              selectedWork?.videoUrl
+                ? {
+                    url: selectedWork.videoUrl,
+                    poster: selectedWork.imageDataUrl,
+                    label: selectedWork.title,
+                  }
+                : null,
+              selectedClothing?.videoUrl
+                ? {
+                    url: selectedClothing.videoUrl,
+                    poster: selectedClothing.imageDataUrl,
+                    label: selectedClothing.name,
+                  }
+                : null,
+            ]}
+          />
         </section>
       </div>
 
@@ -439,7 +490,13 @@ export function TryOn() {
                 }}
               >
                 <img src={w.imageDataUrl} alt={w.title} />
-                <span>{w.title}</span>
+                <div className="picker-meta">
+                  <span>{w.title}</span>
+                  {(workSource === 'recommended' ||
+                    activeSession?.recommendedWorkIds.includes(w.id)) && (
+                    <ReasonBlock reasons={workReason.get(w.id) ?? []} compact />
+                  )}
+                </div>
                 {on && <em className="tag score">使用中</em>}
               </button>
             );
@@ -491,7 +548,13 @@ export function TryOn() {
                 }}
               >
                 <img src={item.imageDataUrl} alt={item.name} />
-                <span>{item.name}</span>
+                <div className="picker-meta">
+                  <span>{item.name}</span>
+                  {(invSource === 'recommended' ||
+                    activeSession?.recommendedInventoryIds.includes(item.id)) && (
+                    <ReasonBlock reasons={invReason.get(item.id) ?? []} compact />
+                  )}
+                </div>
                 {on && <em className="tag score">使用中</em>}
               </button>
             );
@@ -522,10 +585,16 @@ export function TryOn() {
                 onClick={() => toggleAccessory(item.id)}
               >
                 <img src={item.imageDataUrl} alt={item.name} />
-                <span>
-                  {item.name}
-                  <small className="muted"> · {item.category}</small>
-                </span>
+                <div className="picker-meta">
+                  <span>
+                    {item.name}
+                    <small className="muted"> · {item.category}</small>
+                  </span>
+                  {(invSource === 'recommended' ||
+                    activeSession?.recommendedInventoryIds.includes(item.id)) && (
+                    <ReasonBlock reasons={invReason.get(item.id) ?? []} compact />
+                  )}
+                </div>
                 {on && <em className="tag score">叠加中</em>}
               </button>
             );
@@ -535,5 +604,33 @@ export function TryOn() {
 
       <Toast message={toast} onClose={() => setToast('')} />
     </>
+  );
+}
+
+function ClipRow({
+  clips,
+}: {
+  clips: Array<{ url: string; poster: string; label: string } | null>;
+}) {
+  const ready = clips.filter((clip): clip is { url: string; poster: string; label: string } =>
+    Boolean(clip),
+  );
+  if (!ready.length) return null;
+  return (
+    <div className="clip-row">
+      {ready.map((clip) => (
+        <figure key={clip.url}>
+          <video
+            src={clip.url}
+            poster={clip.poster}
+            controls
+            playsInline
+            preload="metadata"
+            aria-label={`${clip.label}的短片`}
+          />
+          <figcaption>{clip.label} · 短片预览</figcaption>
+        </figure>
+      ))}
+    </div>
   );
 }
