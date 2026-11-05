@@ -154,9 +154,7 @@ export function Client() {
       upsertSession(next);
       trackEvent('session_created', { sessionId: next.id });
       setSession(next);
-      setToast('分析完成（参考），正在进入试妆…');
-      // 直达试妆：写入 Top1 草稿成套后跳转
-      window.setTimeout(() => goTryOn(next), 450);
+      setToast('分析完成。先看比例、肤色、脸型、眼型，再决定要不要去试妆');
     } catch (e) {
       console.error(e);
       setToast('分析失败，请换一张更清晰的正脸照片试试');
@@ -199,7 +197,7 @@ export function Client() {
         <div>
           <h2>新客户 · 试妆分析</h2>
           <p className="muted" style={{ margin: 0 }}>
-            上传头像 → 五官/肤色倾向（参考）→ 自动进入试妆搭配
+            上传正脸后，按比例、肤色、脸型、眼型、优缺点和库内妆造分段看结果
           </p>
         </div>
       </div>
@@ -293,7 +291,7 @@ export function Client() {
               </>
             ) : (
               <>
-                <Sparkles size={18} /> 开始分析并去试妆
+                <Sparkles size={18} /> 开始分析
               </>
             )}
           </button>
@@ -305,19 +303,19 @@ export function Client() {
         <section className="panel">
           {!session ? (
             <div className="empty">
-              上传头像并分析后，会自动跳转试妆；也可在此查看倾向摘要
+              上传正脸并分析后，这里会按比例、肤色、脸型、眼型、优缺点和库内妆造分段写出来
             </div>
           ) : (
             <div className="analysis-grid" style={{ gridTemplateColumns: '1fr' }}>
               <div>
                 <div className="tag-row" style={{ marginBottom: 10 }}>
-                  <span className="pill">{session.analysis.faceShape}（倾向）</span>
-                  <span className="pill">{session.analysis.skinTone}（参考）</span>
-                  <span className="tag">
-                    置信度约 {Math.round(session.analysis.confidence * 100)}%
-                  </span>
+                  <span className="pill">肤色 {session.analysis.skinTone}</span>
+                  <span className="pill">脸型 {session.analysis.faceShape}</span>
+                  <span className="pill">眼型 {session.analysis.eyeShape || '待分析'}</span>
                 </div>
-                <FeatureNotes analysis={session.analysis} works={data.works} />
+                <p className="muted" style={{ marginTop: 0 }}>
+                  完整分段写在下方。结论是照片估算，只作沟通参考。
+                </p>
                 <div className="cta-row">
                   <button
                     type="button"
@@ -335,6 +333,14 @@ export function Client() {
 
       {session && (
         <>
+          <section className="panel" style={{ marginBottom: 20 }}>
+            <FeatureNotes
+              analysis={session.analysis}
+              works={data.works}
+              inventory={data.inventory}
+              occasion={occasion}
+            />
+          </section>
           <div className="section-head">
             <div>
               <h2>推荐造型（参考匹配度）</h2>
