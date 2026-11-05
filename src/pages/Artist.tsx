@@ -78,7 +78,7 @@ export function Artist() {
         <div>
           <h2>化妆师工作台</h2>
           <p className="muted" style={{ margin: 0 }}>
-            录入造型作品与店内服装饰品，供客户分析后智能推荐
+            录入造型作品与店内服装饰品，供客户分析后智能推荐。载入演示数据会用免版税实拍和短片覆盖本机作品、库存，并重置本地会话。
           </p>
         </div>
         <div className="cta-row">
@@ -357,13 +357,16 @@ function WorksPanel({
           <div className="card-grid">
             {works.map((w) => (
               <article key={w.id} className="panel work-card" style={{ padding: 0 }}>
-                <div className="thumb">
-                  <img src={w.imageDataUrl} alt={w.title} />
-                </div>
+                <LibraryThumb
+                  src={w.imageDataUrl}
+                  alt={w.title}
+                  videoUrl={w.videoUrl}
+                />
                 <div className="body">
                   <strong>{w.title}</strong>
                   <div className="tag-row">
                     <span className="tag gold">{w.makeupType}</span>
+                    {w.videoUrl && <span className="tag">短片</span>}
                     {w.styles.slice(0, 2).map((s) => (
                       <span className="tag" key={s}>
                         {s}
@@ -373,6 +376,11 @@ function WorksPanel({
                   <p className="muted" style={{ margin: 0, fontSize: 13 }}>
                     {w.occasions.join(' · ')}
                   </p>
+                  {w.notes && (
+                    <p className="muted note-clamp" style={{ margin: 0 }}>
+                      {w.notes}
+                    </p>
+                  )}
                   <button
                     className="btn btn-danger"
                     style={{ padding: '8px 12px', justifyContent: 'center' }}
@@ -556,19 +564,27 @@ function InventoryPanel({
                 className="panel work-card"
                 style={{ padding: 0 }}
               >
-                <div className="thumb">
-                  <img src={item.imageDataUrl} alt={item.name} />
-                </div>
+                <LibraryThumb
+                  src={item.imageDataUrl}
+                  alt={item.name}
+                  videoUrl={item.videoUrl}
+                />
                 <div className="body">
                   <strong>{item.name}</strong>
                   <div className="tag-row">
                     <span className="tag gold">{item.category}</span>
+                    {item.videoUrl && <span className="tag">短片</span>}
                     {item.colors.slice(0, 2).map((c) => (
                       <span className="tag" key={c}>
                         {c}
                       </span>
                     ))}
                   </div>
+                  {item.notes && (
+                    <p className="muted note-clamp" style={{ margin: 0 }}>
+                      {item.notes}
+                    </p>
+                  )}
                   <button
                     className="btn btn-danger"
                     style={{ padding: '8px 12px', justifyContent: 'center' }}
@@ -587,6 +603,33 @@ function InventoryPanel({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function LibraryThumb({
+  src,
+  alt,
+  videoUrl,
+}: {
+  src: string;
+  alt: string;
+  videoUrl?: string;
+}) {
+  return (
+    <div className={`thumb ${videoUrl ? 'has-video' : ''}`}>
+      {videoUrl ? (
+        <video
+          src={videoUrl}
+          poster={src}
+          controls
+          playsInline
+          preload="metadata"
+          aria-label={`${alt}的短片预览`}
+        />
+      ) : (
+        <img src={src} alt={alt} />
+      )}
     </div>
   );
 }

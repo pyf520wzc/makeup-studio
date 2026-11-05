@@ -10,6 +10,7 @@ import {
 import { compressImage, readFileAsDataUrl } from '../lib/file';
 import { compareRestoration } from '../lib/restorationScore';
 import { trackEvent } from '../lib/analytics';
+import { FeatureNotes } from '../components/FeatureNotes';
 import { Toast } from '../components/Toast';
 import type { ClientSession, RestorationRecord } from '../types';
 
@@ -255,14 +256,7 @@ export function Sessions() {
                 </div>
                 <div>
                   <h3>五官结论速览（参考）</h3>
-                  <div className="list-block">
-                    <h3>妆造方向</h3>
-                    <ul>
-                      {active.analysis.directions.map((x) => (
-                        <li key={x}>{x}</li>
-                      ))}
-                    </ul>
-                  </div>
+                  <FeatureNotes analysis={active.analysis} />
                 </div>
               </div>
 
