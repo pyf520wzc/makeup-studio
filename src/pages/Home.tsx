@@ -10,6 +10,9 @@ import {
 import { useMemo, useState } from 'react';
 import {
   clearAllLocalData,
+  consumeDemoUpgradeNotice,
+  libraryMissingPhotoDemo,
+  peekDemoUpgradeNotice,
   loadData,
   loadDemoData,
   seedDemoIfEmpty,
@@ -20,7 +23,10 @@ import { Toast } from '../components/Toast';
 export function Home() {
   const navigate = useNavigate();
   const [tick, setTick] = useState(0);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState(() => {
+    seedDemoIfEmpty();
+    return peekDemoUpgradeNotice();
+  });
   const [showSettings, setShowSettings] = useState(false);
 
   const stats = useMemo(() => {
@@ -31,6 +37,9 @@ export function Home() {
       inventory: data.inventory.length,
       sessions: data.sessions.length,
       events: loadEvents().length,
+      previewWorks: data.works.slice(0, 4),
+      previewInventory: data.inventory.filter((item) => item.category === '服装').slice(0, 4),
+      needsPhotoDemo: libraryMissingPhotoDemo(data),
     };
   }, [tick]);
 
@@ -62,7 +71,7 @@ export function Home() {
   const restoreDemo = () => {
     loadDemoData();
     setTick((t) => t + 1);
-    setToast('已载入演示作品与库存');
+    setToast('已载入实拍妆容和婚纱');
   };
 
   const downloadEvents = () => {
@@ -80,6 +89,20 @@ export function Home() {
 
   return (
     <>
+      {stats.needsPhotoDemo && (
+        <section className="panel demo-callout">
+          <div>
+            <strong>还没有实拍图库</strong>
+            <p className="muted" style={{ margin: '6px 0 0' }}>
+              本机作品是空的，或还停在旧的色块占位。载入免版税妆容和婚纱照片后，打开首页就能看到。
+            </p>
+          </div>
+          <button type="button" className="btn btn-primary" onClick={restoreDemo}>
+            载入实拍演示图库
+          </button>
+        </section>
+      )}
+
       <section className="hero">
         <div className="hero-card">
           <div className="eyebrow">
@@ -155,11 +178,38 @@ export function Home() {
               <Eraser size={16} /> 清除全部本地数据
             </button>
             <button type="button" className="btn btn-secondary" onClick={restoreDemo}>
-              载入演示数据
+              载入实拍演示图库
             </button>
             <button type="button" className="btn btn-ghost" onClick={downloadEvents}>
               导出埋点（{stats.events}）
             </button>
+          </div>
+        </section>
+      )}
+
+      {(stats.previewWorks.length > 0 || stats.previewInventory.length > 0) && (
+        <section className="home-media">
+          <div className="section-head">
+            <div>
+              <h2>图库里的实拍</h2>
+              <p className="muted" style={{ margin: 0 }}>
+                妆容和婚纱来自免版税图库，点「我是客户」就能拿去试妆
+              </p>
+            </div>
+          </div>
+          <div className="home-media-row">
+            {stats.previewWorks.map((work) => (
+              <figure key={work.id} className="home-thumb">
+                <img src={work.imageDataUrl} alt={work.title} />
+                <figcaption>{work.title}</figcaption>
+              </figure>
+            ))}
+            {stats.previewInventory.map((item) => (
+              <figure key={item.id} className="home-thumb">
+                <img src={item.imageDataUrl} alt={item.name} />
+                <figcaption>{item.name}</figcaption>
+              </figure>
+            ))}
           </div>
         </section>
       )}
@@ -197,7 +247,13 @@ export function Home() {
         </article>
       </div>
 
-      <Toast message={toast} onClose={() => setToast('')} />
+      <Toast
+        message={toast}
+        onClose={() => {
+          consumeDemoUpgradeNotice();
+          setToast('');
+        }}
+      />
     </>
   );
 }

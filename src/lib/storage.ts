@@ -4,6 +4,22 @@ import { clearPrivacyConsent } from './privacy';
 
 const STORAGE_KEY = 'makeup-studio-v1';
 const DEMO_FLAG = 'makeup-studio-demo';
+const DEMO_VERSION_KEY = 'makeup-studio-demo-version';
+const DEMO_UPGRADED_NOTICE = 'makeup-studio-demo-upgraded';
+/** Bump when the seeded photo library changes. Older browsers refresh on next load. */
+export const DEMO_SEED_VERSION = 2;
+
+const LEGACY_WORK_TITLES = new Set([
+  '清透约会妆',
+  '新娘温柔妆',
+  '冷淡高级烟熏',
+  '复古红唇经典',
+]);
+const LEGACY_INVENTORY_NAMES = new Set([
+  '珍珠耳钉套装',
+  '香槟色晚礼服披肩',
+  '花朵发夹组合',
+]);
 
 const defaultData = (): AppData => ({
   works: [],
@@ -98,6 +114,7 @@ export function clearAllLocalData(opts?: {
 }): AppData {
   saveData(defaultData());
   localStorage.setItem(DEMO_FLAG, 'off');
+  localStorage.setItem(DEMO_VERSION_KEY, String(DEMO_SEED_VERSION));
   if (!opts?.keepEvents) clearEvents();
   if (!opts?.keepPrivacy) clearPrivacyConsent();
   return defaultData();
@@ -110,21 +127,110 @@ export function isDemoAutoSeedOff(): boolean {
 /** 强制写入演示数据（化妆师工作台 / 首页「载入演示」） */
 export function loadDemoData(): AppData {
   localStorage.removeItem(DEMO_FLAG);
+  localStorage.setItem(DEMO_VERSION_KEY, String(DEMO_SEED_VERSION));
   const data = defaultData();
   fillDemo(data);
   saveData(data);
   return data;
 }
 
+function getDemoVersion(): number {
+  const n = Number(localStorage.getItem(DEMO_VERSION_KEY) || '0');
+  return Number.isFinite(n) ? n : 0;
+}
+
+function isDataImage(url: string | undefined): boolean {
+  return typeof url === 'string' && url.startsWith('data:image');
+}
+
+function isLegacyPlaceholderWork(item: WorkItem): boolean {
+  return isDataImage(item.imageDataUrl) && LEGACY_WORK_TITLES.has(item.title);
+}
+
+function isLegacyPlaceholderInventory(item: InventoryItem): boolean {
+  return isDataImage(item.imageDataUrl) && LEGACY_INVENTORY_NAMES.has(item.name);
+}
+
+function noteDemoUpgrade(message: string): void {
+  try {
+    sessionStorage.setItem(DEMO_UPGRADED_NOTICE, message);
+  } catch {
+    /* private mode */
+  }
+}
+
+export function peekDemoUpgradeNotice(): string {
+  try {
+    return sessionStorage.getItem(DEMO_UPGRADED_NOTICE) || '';
+  } catch {
+    return '';
+  }
+}
+
+/** 首页/工作台关掉提示后再清掉，避免每次刷新都弹。 */
+export function consumeDemoUpgradeNotice(): string {
+  try {
+    const message = sessionStorage.getItem(DEMO_UPGRADED_NOTICE) || '';
+    if (message) sessionStorage.removeItem(DEMO_UPGRADED_NOTICE);
+    return message;
+  } catch {
+    return '';
+  }
+}
+
 /**
- * 首次空库时自动灌演示数据；若用户曾「清除全部数据」则不再自动灌，直到 loadDemoData。
+ * 旧版本地库（色块演示，或清过数据但还没有版本号）升级到当前实拍种子。
+ * 能认出来的旧色块会被换掉；标题对不上的用户自录项目保留。
+ */
+function upgradeDemoLibrary(data: AppData): AppData {
+  const userWorks = data.works.filter((item) => !isLegacyPlaceholderWork(item));
+  const userInventory = data.inventory.filter((item) => !isLegacyPlaceholderInventory(item));
+  const onlyLegacy = userWorks.length === 0 && userInventory.length === 0;
+
+  if (onlyLegacy) {
+    const next = defaultData();
+    fillDemo(next);
+    saveData(next);
+    localStorage.removeItem(DEMO_FLAG);
+    localStorage.setItem(DEMO_VERSION_KEY, String(DEMO_SEED_VERSION));
+    noteDemoUpgrade('已换成实拍妆容和婚纱演示图库');
+    return next;
+  }
+
+  const removed =
+    data.works.length - userWorks.length + (data.inventory.length - userInventory.length);
+  const next: AppData = {
+    works: userWorks,
+    inventory: userInventory,
+    sessions: data.sessions,
+  };
+  saveData(next);
+  localStorage.setItem(DEMO_VERSION_KEY, String(DEMO_SEED_VERSION));
+  if (removed > 0) noteDemoUpgrade('已去掉旧的色块演示，你录入的项目还在');
+  return next;
+}
+
+/** 图库里还没有 /assets 实拍，首页和工作台用它决定要不要放大载入按钮。 */
+export function libraryMissingPhotoDemo(data: AppData): boolean {
+  const media = [...data.works, ...data.inventory];
+  if (media.length === 0) return true;
+  return media.every((item) => !item.imageDataUrl.startsWith('/assets/'));
+}
+
+/**
+ * 首次空库时自动灌演示数据；版本过旧时换成实拍种子。
+ * 用户在当前版本里点过「清除全部数据」后，空库保持为空，直到再次载入演示。
  */
 export function seedDemoIfEmpty(): AppData {
-  const data = loadData();
+  let data = loadData();
+  if (getDemoVersion() < DEMO_SEED_VERSION) {
+    data = upgradeDemoLibrary(data);
+  }
   if (data.works.length > 0 || data.inventory.length > 0) return data;
   if (isDemoAutoSeedOff()) return data;
   fillDemo(data);
   saveData(data);
+  localStorage.setItem(DEMO_VERSION_KEY, String(DEMO_SEED_VERSION));
   return data;
 }
 

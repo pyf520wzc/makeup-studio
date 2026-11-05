@@ -3,6 +3,7 @@ import type {
   FaceShape,
   FacialFeatureNote,
   FeatureAnalysis,
+  FeatureVerdict,
   SkinTone,
 } from '../types';
 
@@ -73,19 +74,34 @@ export async function analyzeFaceImage(
   const noseHighlight = nose.lum - (cheek.lum || skin.lum);
   const lipRedness = lips.redness - (cheek.redness || skin.redness);
   const noseWidth = brightColumnWidth(data, width, box, nose.lum, cheek.lum || skin.lum);
+  const proportions = measureProportions(
+    data,
+    width,
+    box,
+    cheek.lum || skin.lum,
+    forehead.lum || cheek.lum || skin.lum,
+    cheek.redness || skin.redness,
+  );
 
   const cues: AnalysisCues = {
     eyeDelta: round(eyeDelta),
     eyeContrast: round(eye.contrast),
     eyeAsymmetry: round(eyeAsymmetry),
+    eyeWidth: proportions.eyeWidth,
     browContrast: round(brow.contrast),
+    browWidth: proportions.browWidth,
     noseHighlight: round(noseHighlight),
     noseWidth: Math.round(noseWidth * 100) / 100,
     lipRedness: round(lipRedness),
+    lipWidth: proportions.lipWidth,
+    lipHeight: proportions.lipHeight,
     faceRatio: Math.round(faceRatio * 100) / 100,
     foreheadWidth: Math.round(foreheadW * 100) / 100,
     cheekWidth: Math.round(cheekW * 100) / 100,
     jawWidth: Math.round(jawW * 100) / 100,
+    upperShare: proportions.upperShare,
+    midShare: proportions.midShare,
+    lowerShare: proportions.lowerShare,
     usedSkinMask,
   };
 
@@ -101,7 +117,12 @@ export async function analyzeFaceImage(
     skin,
     cheek,
   });
-  const { strengths, weaknesses, directions } = buildAdvice(cues, faceShape, skinTone, brightness);
+  const { strengths, weaknesses, directions, verdicts } = buildAdvice(
+    cues,
+    faceShape,
+    skinTone,
+    round(brightness),
+  );
   const summary = buildSummary(cues, faceShape, skinTone, brightness, warmth, featureDetails);
 
   const confidence = Math.min(
@@ -120,6 +141,7 @@ export async function analyzeFaceImage(
     summary,
     featureDetails,
     cues,
+    verdicts,
     brightness: round(brightness),
     warmth: round(warmth),
     contrast: round(skin.contrast || eye.contrast),
@@ -268,56 +290,268 @@ function buildAdvice(
   faceShape: FaceShape,
   skinTone: SkinTone,
   brightness: number,
-): { strengths: string[]; weaknesses: string[]; directions: string[] } {
-  const strengths: string[] = [];
-  const weaknesses: string[] = [];
-  const directions: string[] = [];
+): {
+  strengths: string[];
+  weaknesses: string[];
+  directions: string[];
+  verdicts: FeatureVerdict[];
+} {
+  const verdicts: FeatureVerdict[] = [];
 
-  if (cues.eyeDelta > 28) strengths.push(`眼周比面颊暗约 ${cues.eyeDelta}，眼妆稍加深就有精神`);
-  else if (cues.eyeDelta < 12) {
-    weaknesses.push('眼周和肤色几乎一样亮，淡妆容易看不出眼睛');
-    directions.push('先加强眉色和睫毛，再决定要不要铺眼影');
-  } else strengths.push('眼窝深浅适中，淡妆和精致眼妆都有空间');
+  if (cues.eyeDelta >= 22) {
+    verdicts.push({
+      aim: '优点',
+      part: '眼',
+      text: `眼神对比强：眼区比面颊暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}`,
+      match: '烟熏|浓密睫毛|眼窝|眼影|眼线',
+    });
+  } else {
+    verdicts.push({
+      aim: '缺点',
+      part: '眼',
+      text: `眼神偏淡：眼区只比面颊暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}`,
+      match: '卧蚕|眼线|浓密睫毛|烟熏|眼影',
+    });
+  }
 
-  if (cues.lipRedness > 10) strengths.push(`唇色比面颊红约 ${cues.lipRedness}，唇妆好显色`);
-  else if (cues.lipRedness < 2) directions.push('唇色偏淡，需要唇色来补气色');
+  if (cues.browContrast >= 28) {
+    verdicts.push({
+      aim: '优点',
+      part: '眉',
+      text: `眉色清楚：眉区对比 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}`,
+      match: '空气眉|眉',
+    });
+  } else {
+    verdicts.push({
+      aim: '缺点',
+      part: '眉',
+      text: `眉色偏淡：眉区对比只有 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}`,
+      match: '空气眉|眉',
+    });
+  }
 
-  if (brightness > 175) directions.push('面颊偏亮，底妆走清透，拍照注意鼻头和额头反光');
-  else if (brightness < 115) strengths.push('肤色有深度，适合清晰修容而不是厚重提亮');
+  if (cues.noseWidth >= 0.28) {
+    verdicts.push({
+      aim: '缺点',
+      part: '鼻',
+      text: `鼻中偏宽：亮部约占脸宽 ${pct(cues.noseWidth)}，比面颊${cues.noseHighlight >= 0 ? '亮' : '暗'} ${Math.abs(cues.noseHighlight)}`,
+      match: '高光|修容|立体',
+    });
+  } else if (cues.noseHighlight >= 10) {
+    verdicts.push({
+      aim: '优点',
+      part: '鼻',
+      text: `鼻梁已有高光：比面颊亮 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}`,
+      match: '高光|立体',
+    });
+  } else {
+    verdicts.push({
+      aim: '缺点',
+      part: '鼻',
+      text: `鼻梁不够亮：比面颊只差 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}`,
+      match: '高光|立体',
+    });
+  }
 
-  if (skinTone === '冷白皮') directions.push('腮红和唇色优先玫瑰、梅子，少用大面积橘');
-  else if (skinTone === '暖白皮' || skinTone === '暖黄皮') directions.push('腮红和唇色优先珊瑚、豆沙、浅橘');
-  else directions.push('冷暖都可以，按场合在玫瑰和珊瑚之间选');
+  if (cues.lipRedness >= 8) {
+    verdicts.push({
+      aim: '优点',
+      part: '唇',
+      text: `唇色本身明显：比面颊红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}，唇厚约占脸高 ${pct(cues.lipHeight)}`,
+      match: '正红唇|红唇|唇釉|蜜桃唇',
+    });
+  } else {
+    verdicts.push({
+      aim: '缺点',
+      part: '唇',
+      text: `唇色偏淡：比面颊只红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}，唇厚约占脸高 ${pct(cues.lipHeight)}`,
+      match: '正红唇|红唇|唇釉|蜜桃唇',
+    });
+  }
 
-  switch (faceShape) {
-    case '圆脸':
-      directions.push('修容收窄面中两侧，腮红往上带');
-      break;
-    case '方脸':
-      directions.push('眉峰和唇峰画圆润些，减弱下颌直角');
-      break;
-    case '长脸':
-      directions.push('腮红横向铺，避免眉峰和发饰再拉长脸');
-      break;
-    case '心形脸':
-      directions.push('额头两侧轻阴影，下巴少量高光');
-      break;
-    case '菱形脸':
-      directions.push('颧骨高光收小，眼妆向外延展');
-      break;
-    default:
-      directions.push('鹅蛋脸兼容度高，按场合选风格即可');
+  if (faceShape === '鹅蛋脸') {
+    verdicts.push({
+      aim: '优点',
+      part: '轮廓',
+      text: `轮廓比较匀：${contourMeasurePhrase(cues)}`,
+      match: '清透|裸|低对比|日系',
+    });
+  } else {
+    verdicts.push({
+      aim: '缺点',
+      part: '轮廓',
+      text: `${faceShape}需要收一收：${contourMeasurePhrase(cues)}`,
+      match: '冷淡|立体|修容|高光',
+    });
+  }
+
+  if (brightness >= 170 && (skinTone === '暖白皮' || skinTone === '冷白皮')) {
+    verdicts.push({
+      aim: '优点',
+      part: '肤色',
+      text: `底色亮：面颊明度 ${brightness}，参考${skinTone}`,
+      match: skinTone.includes('冷') ? '冷调|低饱和' : '蜜桃|裸|清透',
+    });
+  } else if (brightness < 120 || skinTone === '暖黄皮' || skinTone === '深肤色') {
+    verdicts.push({
+      aim: '缺点',
+      part: '肤色',
+      text: `气色要靠唇色托：面颊明度 ${brightness}，参考${skinTone}`,
+      match: skinTone === '深肤色' || skinTone.includes('暖') ? '蜜桃|红唇|金' : '冷调|低饱和',
+    });
   }
 
   if (!cues.usedSkinMask) {
-    weaknesses.push('肤色区域不稳定，脸型和肤色都要再换正脸确认');
+    verdicts.push({
+      aim: '缺点',
+      part: '轮廓',
+      text: '肤色区域不稳定，比例要再换一张正脸确认',
+      match: '清透|裸',
+    });
   }
 
+  const strengths = verdicts.filter((item) => item.aim === '优点').map((item) => item.text);
+  const weaknesses = verdicts.filter((item) => item.aim === '缺点').map((item) => item.text);
   return {
-    strengths: unique(strengths).slice(0, 4),
-    weaknesses: unique(weaknesses).slice(0, 3),
-    directions: unique(directions).slice(0, 4),
+    strengths: strengths.slice(0, 4),
+    weaknesses: weaknesses.slice(0, 4),
+    directions: [],
+    verdicts,
   };
+}
+
+function measureProportions(
+  data: Uint8ClampedArray,
+  imgW: number,
+  box: Box,
+  cheekLum: number,
+  foreheadLum: number,
+  cheekRed: number,
+): {
+  eyeWidth: number;
+  browWidth: number;
+  lipWidth: number;
+  lipHeight: number;
+  upperShare: number;
+  midShare: number;
+  lowerShare: number;
+} {
+  const eye = spanWhere(data, imgW, box, 0.28, 0.48, (r, g, b) => lumOf(r, g, b) < cheekLum - 18);
+  const brow = spanWhere(
+    data,
+    imgW,
+    box,
+    0.16,
+    0.36,
+    (r, g, b) => lumOf(r, g, b) < (foreheadLum || cheekLum) - 22,
+  );
+  const lip = spanWhere(
+    data,
+    imgW,
+    box,
+    0.64,
+    0.88,
+    (r, g, b) => r - (g + b) / 2 > cheekRed + 6,
+  );
+  const browRow = extremeRow(data, imgW, box, 0.12, 0.42, (r, g, b) => -lumOf(r, g, b));
+  const lipRow = extremeRow(data, imgW, box, 0.55, 0.9, (r, g, b) => r - (g + b) / 2);
+  let upperShare = 0;
+  let midShare = 0;
+  let lowerShare = 0;
+  if (browRow > 0.05 && lipRow > browRow + 0.08 && lipRow < 0.95) {
+    upperShare = round2(browRow);
+    midShare = round2(lipRow - browRow);
+    lowerShare = round2(Math.max(0, 1 - lipRow));
+  }
+  return {
+    eyeWidth: eye.width,
+    browWidth: brow.width,
+    lipWidth: lip.width,
+    lipHeight: lip.height,
+    upperShare,
+    midShare,
+    lowerShare,
+  };
+}
+
+function spanWhere(
+  data: Uint8ClampedArray,
+  imgW: number,
+  box: Box,
+  fy0: number,
+  fy1: number,
+  pred: (r: number, g: number, b: number) => boolean,
+): { width: number; height: number } {
+  if (box.w < 4 || box.h < 4) return { width: 0, height: 0 };
+  const y0 = clamp(Math.floor(box.y + box.h * fy0), 0, 100000);
+  const y1 = clamp(Math.floor(box.y + box.h * fy1), y0 + 1, 100000);
+  let minX = Infinity;
+  let maxX = -1;
+  let minY = Infinity;
+  let maxY = -1;
+  let n = 0;
+  for (let y = y0; y < y1; y += 2) {
+    if (y * imgW >= data.length / 4) break;
+    for (let x = box.x; x < box.x + box.w; x += 2) {
+      const i = (y * imgW + x) * 4;
+      if (i < 0 || i + 3 >= data.length || data[i + 3] < 128) continue;
+      if (!pred(data[i], data[i + 1], data[i + 2])) continue;
+      n++;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (n < 8) return { width: 0, height: 0 };
+  return {
+    width: round2((maxX - minX) / box.w),
+    height: round2((maxY - minY) / box.h),
+  };
+}
+
+function extremeRow(
+  data: Uint8ClampedArray,
+  imgW: number,
+  box: Box,
+  fy0: number,
+  fy1: number,
+  score: (r: number, g: number, b: number) => number,
+): number {
+  if (box.h < 4) return -1;
+  const y0 = clamp(Math.floor(box.y + box.h * fy0), 0, 100000);
+  const y1 = clamp(Math.floor(box.y + box.h * fy1), y0 + 1, 100000);
+  let best = -Infinity;
+  let bestY = -1;
+  for (let y = y0; y < y1; y += 2) {
+    if (y * imgW >= data.length / 4) break;
+    let sum = 0;
+    let n = 0;
+    const x0 = Math.floor(box.x + box.w * 0.2);
+    const x1 = Math.floor(box.x + box.w * 0.8);
+    for (let x = x0; x < x1; x += 3) {
+      const i = (y * imgW + x) * 4;
+      if (i < 0 || i + 3 >= data.length || data[i + 3] < 128) continue;
+      sum += score(data[i], data[i + 1], data[i + 2]);
+      n++;
+    }
+    if (n < 4) continue;
+    const avg = sum / n;
+    if (avg > best) {
+      best = avg;
+      bestY = y;
+    }
+  }
+  if (bestY < 0) return -1;
+  return (bestY - box.y) / box.h;
+}
+
+function lumOf(r: number, g: number, b: number): number {
+  return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 function guessFaceShape(
@@ -576,10 +810,6 @@ export function contourMeasurePhrase(cues: AnalysisCues): string {
 
 function pct(n: number): string {
   return `${Math.round(n * 100)}%`;
-}
-
-function unique(arr: string[]): string[] {
-  return [...new Set(arr)];
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

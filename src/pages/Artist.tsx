@@ -12,6 +12,9 @@ import type {
 import {
   deleteInventory,
   deleteWork,
+  consumeDemoUpgradeNotice,
+  libraryMissingPhotoDemo,
+  peekDemoUpgradeNotice,
   loadDemoData,
   seedDemoIfEmpty,
   uid,
@@ -63,7 +66,10 @@ export function Artist() {
   const needWorks = params.get('need') === 'works';
   const [tab, setTab] = useState<Tab>('works');
   const [tick, setTick] = useState(0);
-  const [toast, setToast] = useState('');
+  const [toast, setToast] = useState(() => {
+    seedDemoIfEmpty();
+    return peekDemoUpgradeNotice();
+  });
   const data = useMemo(() => {
     void tick;
     return seedDemoIfEmpty();
@@ -88,16 +94,37 @@ export function Artist() {
             onClick={() => {
               loadDemoData();
               refresh();
-              notify('已载入演示数据');
+              notify('已载入实拍妆容和婚纱');
             }}
           >
-            载入演示数据
+            载入实拍演示图库
           </button>
           <Link className="btn btn-secondary" to="/sessions">
             还原台
           </Link>
         </div>
       </div>
+      {libraryMissingPhotoDemo(data) && (
+        <div className="panel demo-callout" style={{ marginBottom: 16 }}>
+          <div>
+            <strong>{data.works.length === 0 ? '作品库还是空的' : '图库还是旧的色块'}</strong>
+            <p className="muted" style={{ margin: '6px 0 0' }}>
+              载入免版税实拍妆容、婚纱和短片。客户打开首页和试妆页就能看到照片，不用再找这个按钮。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              loadDemoData();
+              refresh();
+              notify('已载入实拍妆容和婚纱');
+            }}
+          >
+            载入实拍演示图库
+          </button>
+        </div>
+      )}
       {needWorks && data.works.length === 0 && (
         <div className="privacy-banner panel" style={{ marginBottom: 16 }}>
           <strong>客户流程已拦截：</strong>
@@ -146,7 +173,13 @@ export function Artist() {
         />
       )}
 
-      <Toast message={toast} onClose={() => setToast('')} />
+      <Toast
+        message={toast}
+        onClose={() => {
+          consumeDemoUpgradeNotice();
+          setToast('');
+        }}
+      />
     </>
   );
 }
