@@ -88,6 +88,7 @@ export async function analyzeFaceImage(
     eyeContrast: round(eye.contrast),
     eyeAsymmetry: round(eyeAsymmetry),
     eyeWidth: proportions.eyeWidth,
+    eyeHeight: proportions.eyeHeight,
     browContrast: round(brow.contrast),
     browWidth: proportions.browWidth,
     noseHighlight: round(noseHighlight),
@@ -124,6 +125,7 @@ export async function analyzeFaceImage(
     round(brightness),
   );
   const summary = buildSummary(cues, faceShape, skinTone, brightness, warmth, featureDetails);
+  const eyeRead = guessEyeShape(cues);
 
   const confidence = Math.min(
     0.9,
@@ -146,6 +148,8 @@ export async function analyzeFaceImage(
     warmth: round(warmth),
     contrast: round(skin.contrast || eye.contrast),
     confidence,
+    eyeShape: eyeRead.eyeShape,
+    eyeEvidence: eyeRead.eyeEvidence,
   };
 }
 
@@ -302,14 +306,14 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '眼',
-      text: `眼神对比强：眼区比面颊暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}`,
+      text: `眼神对比已经够（眼区暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}）。放大做法：眼尾加深、睫毛加密，不要用大片浅色把眼窝盖平。`,
       match: '烟熏|浓密睫毛|眼窝|眼影|眼线',
     });
   } else {
     verdicts.push({
       aim: '缺点',
       part: '眼',
-      text: `眼神偏淡：眼区只比面颊暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}`,
+      text: `眼神偏淡（只比面颊暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}）。遮挡做法：先加眼线和卧蚕，再决定要不要铺深色眼影。`,
       match: '卧蚕|眼线|浓密睫毛|烟熏|眼影',
     });
   }
@@ -318,14 +322,14 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '眉',
-      text: `眉色清楚：眉区对比 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}`,
+      text: `眉色已经清楚（对比 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}）。放大做法：顺着原眉修齐，不要再加粗一层。`,
       match: '空气眉|眉',
     });
   } else {
     verdicts.push({
       aim: '缺点',
       part: '眉',
-      text: `眉色偏淡：眉区对比只有 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}`,
+      text: `眉色偏淡（对比只有 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}）。遮挡做法：用浅一号的眉色把眉峰补出来，避免整张脸没精神。`,
       match: '空气眉|眉',
     });
   }
@@ -334,21 +338,21 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '鼻',
-      text: `鼻中偏宽：亮部约占脸宽 ${pct(cues.noseWidth)}，比面颊${cues.noseHighlight >= 0 ? '亮' : '暗'} ${Math.abs(cues.noseHighlight)}`,
+      text: `鼻中偏宽（亮部约占脸宽 ${pct(cues.noseWidth)}）。遮挡做法：鼻影只收在两侧，高光留一条窄线，不要涂满鼻头。`,
       match: '高光|修容|立体',
     });
   } else if (cues.noseHighlight >= 10) {
     verdicts.push({
       aim: '优点',
       part: '鼻',
-      text: `鼻梁已有高光：比面颊亮 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}`,
+      text: `鼻梁已经有高光（比面颊亮 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}）。放大做法：高光点在鼻梁中线，范围不要再加宽。`,
       match: '高光|立体',
     });
   } else {
     verdicts.push({
       aim: '缺点',
       part: '鼻',
-      text: `鼻梁不够亮：比面颊只差 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}`,
+      text: `鼻梁不够亮（比面颊只差 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}）。遮挡做法：只在山根到鼻尖点一条高光，两侧轻修容。`,
       match: '高光|立体',
     });
   }
@@ -357,14 +361,14 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '唇',
-      text: `唇色本身明显：比面颊红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}，唇厚约占脸高 ${pct(cues.lipHeight)}`,
+      text: `唇色本身明显（比面颊红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}）。放大做法：正红或豆沙都能显色，把唇线和嘴角收干净。`,
       match: '正红唇|红唇|唇釉|蜜桃唇',
     });
   } else {
     verdicts.push({
       aim: '缺点',
       part: '唇',
-      text: `唇色偏淡：比面颊只红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}，唇厚约占脸高 ${pct(cues.lipHeight)}`,
+      text: `唇色偏淡（比面颊只红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}）。遮挡做法：先把唇色铺匀，再叠蜜桃或正红，裸唇会显没气色。`,
       match: '正红唇|红唇|唇釉|蜜桃唇',
     });
   }
@@ -373,14 +377,14 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '轮廓',
-      text: `轮廓比较匀：${contourMeasurePhrase(cues)}`,
+      text: `轮廓比较匀（${contourMeasurePhrase(cues)}）。放大做法：按场合选风格即可，不必大面积修容。`,
       match: '清透|裸|低对比|日系',
     });
   } else {
     verdicts.push({
       aim: '缺点',
       part: '轮廓',
-      text: `${faceShape}需要收一收：${contourMeasurePhrase(cues)}`,
+      text: `${faceShape}需要收一收（${contourMeasurePhrase(cues)}）。遮挡做法：修容跟着脸型走，圆脸收两侧，长脸把腮红横向铺。`,
       match: '冷淡|立体|修容|高光',
     });
   }
@@ -389,14 +393,14 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '肤色',
-      text: `底色亮：面颊明度 ${brightness}，参考${skinTone}`,
+      text: `底色亮（面颊明度 ${brightness}，${skinTone}）。放大做法：底妆走清透，腮红薄薄一层就够。`,
       match: skinTone.includes('冷') ? '冷调|低饱和' : '蜜桃|裸|清透',
     });
   } else if (brightness < 120 || skinTone === '暖黄皮' || skinTone === '深肤色') {
     verdicts.push({
       aim: '缺点',
       part: '肤色',
-      text: `气色要靠唇色托：面颊明度 ${brightness}，参考${skinTone}`,
+      text: `气色要靠唇色托（面颊明度 ${brightness}，${skinTone}）。遮挡做法：别把脸提成另一种肤色，用唇色和薄腮红补气色。`,
       match: skinTone === '深肤色' || skinTone.includes('暖') ? '蜜桃|红唇|金' : '冷调|低饱和',
     });
   }
@@ -420,6 +424,47 @@ function buildAdvice(
   };
 }
 
+function guessEyeShape(cues: AnalysisCues): { eyeShape: string; eyeEvidence: string } {
+  if (cues.eyeWidth < 0.08) {
+    return {
+      eyeShape: '眼型未稳定',
+      eyeEvidence: '眼部暗区太少，分不出眼裂。请换一张五官更清楚的正脸。',
+    };
+  }
+  const aspect =
+    (cues.eyeHeight * Math.max(cues.faceRatio, 0.8)) / Math.max(cues.eyeWidth, 0.05);
+  const wide = pct(cues.eyeWidth);
+  const ratioText = aspect.toFixed(2);
+  if (cues.eyeDelta >= 30 && cues.eyeContrast >= 34) {
+    return {
+      eyeShape: '深邃眼',
+      eyeEvidence: `眼区比面颊暗 ${cues.eyeDelta}，眼内对比 ${cues.eyeContrast}，眼宽约占脸宽 ${wide}。暗部和对比都高，读作深邃眼。`,
+    };
+  }
+  if (cues.eyeWidth >= 0.55 && aspect < 0.42 && cues.eyeDelta >= 14) {
+    return {
+      eyeShape: '丹凤眼',
+      eyeEvidence: `眼裂偏长（宽约占脸宽 ${wide}，高宽比约 ${ratioText}），比面颊暗 ${cues.eyeDelta}。细长且眼尾有线条，读作丹凤眼。`,
+    };
+  }
+  if (cues.eyeWidth >= 0.48 && aspect >= 0.42 && aspect < 0.72 && cues.eyeDelta < 32) {
+    return {
+      eyeShape: '桃花眼',
+      eyeEvidence: `眼裂宽度够（约占脸宽 ${wide}），纵向不算特别圆（高宽比约 ${ratioText}），对比 ${cues.eyeDelta}。柔和、眼尾略开，读作桃花眼。`,
+    };
+  }
+  if (aspect >= 0.72) {
+    return {
+      eyeShape: '圆眼',
+      eyeEvidence: `眼裂纵向偏高（高宽比约 ${ratioText}），宽约占脸宽 ${wide}。轮廓偏圆，读作圆眼。`,
+    };
+  }
+  return {
+    eyeShape: '杏眼',
+    eyeEvidence: `眼裂宽高居中（宽约占脸宽 ${wide}，高宽比约 ${ratioText}），比面颊暗 ${cues.eyeDelta}。读作杏眼。`,
+  };
+}
+
 function measureProportions(
   data: Uint8ClampedArray,
   imgW: number,
@@ -429,6 +474,7 @@ function measureProportions(
   cheekRed: number,
 ): {
   eyeWidth: number;
+  eyeHeight: number;
   browWidth: number;
   lipWidth: number;
   lipHeight: number;
@@ -465,6 +511,7 @@ function measureProportions(
   }
   return {
     eyeWidth: eye.width,
+    eyeHeight: eye.height,
     browWidth: brow.width,
     lipWidth: lip.width,
     lipHeight: lip.height,

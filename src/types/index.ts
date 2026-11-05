@@ -72,6 +72,8 @@ export interface AnalysisCues {
   eyeAsymmetry: number;
   /** 眼部暗区宽度 / 脸宽 */
   eyeWidth: number;
+  /** 眼部暗区高度 / 脸高 */
+  eyeHeight: number;
   browContrast: number;
   /** 眉部暗区宽度 / 脸宽 */
   browWidth: number;
@@ -120,6 +122,10 @@ export interface FeatureAnalysis {
   warmth: number;
   contrast: number;
   confidence: number;
+  /** 由眼裂宽高和明暗估出的眼型，例如桃花眼、杏眼、丹凤眼、深邃眼 */
+  eyeShape?: string;
+  /** 眼型判断用到的照片依据 */
+  eyeEvidence?: string;
 }
 
 export interface ClientSession {

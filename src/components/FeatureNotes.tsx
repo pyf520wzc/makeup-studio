@@ -1,108 +1,148 @@
-import { catalogMoves } from '../lib/recommend';
-import type { AnalysisCues, FeatureAnalysis, WorkItem } from '../types';
+import { contourMeasurePhrase } from '../lib/faceAnalysis';
+import { recommendInventory, recommendWorks } from '../lib/recommend';
+import type { FeatureAnalysis, InventoryItem, Occasion, WorkItem } from '../types';
 
 export function FeatureNotes({
   analysis,
   works = [],
+  inventory = [],
+  occasion = '',
 }: {
   analysis: FeatureAnalysis;
   works?: WorkItem[];
+  inventory?: InventoryItem[];
+  occasion?: Occasion | '';
 }) {
-  const details = analysis.featureDetails ?? [];
   const cues = analysis.cues;
-  const moves = works.length ? catalogMoves(analysis, works) : [];
+  const rankedWorks = works.length ? recommendWorks(analysis, works, occasion).slice(0, 4) : [];
+  const rankedInventory = inventory.length
+    ? recommendInventory(
+        analysis,
+        inventory,
+        rankedWorks.map((item) => item.work),
+        occasion,
+      ).slice(0, 4)
+    : [];
+
   return (
     <div className="feature-notes">
-      {analysis.summary ? (
-        <p className="analysis-summary">{analysis.summary}</p>
-      ) : (
-        <p className="analysis-summary">
-          这次还没有分区测量。重新分析一张正脸后，会看到比例、优缺点，以及图库里能对上的作品。
-        </p>
-      )}
-      {cues && typeof cues.eyeWidth === 'number' && (
-        <ProportionList cues={cues} faceShape={analysis.faceShape} />
-      )}
-      <VerdictList title="优点" items={analysis.strengths} empty="这次没测出特别突出的优点。" />
-      <VerdictList title="缺点" items={analysis.weaknesses} empty="这次没测出明显短板。" />
-      {works.length > 0 && (
-        <div className="list-block">
-          <h3>按现有作品放大优点 / 遮盖缺点</h3>
+      <section className="analysis-section">
+        <h3>五官比例</h3>
+        {cues && typeof cues.eyeWidth === 'number' ? (
           <ul>
-            {moves.length === 0 && <li>这次没有可对照的优缺点。</li>}
-            {moves.map((move) => (
-              <li key={`${move.aim}-${move.feature}`}>
-                {move.aim}「{move.feature}」：
-                {move.work
-                  ? `用图库里的「${move.work.title}」（风格 ${move.work.styles.join('、') || '未标'}，标签 ${move.work.tags.join('、') || '无'}）。`
-                  : '现有作品的标题、风格和标签都对不上，不另造妆容。'}
+            <li>眼：暗区宽度约占脸宽 {pct(cues.eyeWidth)}，高度约占脸高 {pct(cues.eyeHeight)}，比面颊暗 {cues.eyeDelta}</li>
+            <li>眉：暗区宽度约占脸宽 {pct(cues.browWidth)}，对比 {cues.browContrast}</li>
+            <li>
+              鼻：亮部约占脸宽 {pct(cues.noseWidth)}，比面颊{cues.noseHighlight >= 0 ? '亮' : '暗'}{' '}
+              {Math.abs(cues.noseHighlight)}
+            </li>
+            <li>
+              唇：色区宽度约占脸宽 {pct(cues.lipWidth)}，厚度约占脸高 {pct(cues.lipHeight)}，红差 {cues.lipRedness}
+            </li>
+            <li>
+              三庭：
+              {cues.upperShare > 0
+                ? `上 / 中 / 下约 ${pct(cues.upperShare)} / ${pct(cues.midShare)} / ${pct(cues.lowerShare)}`
+                : '这次没有稳定分开'}
+              。脸的长宽比 {cues.faceRatio}
+            </li>
+          </ul>
+        ) : (
+          <p className="muted">重新分析一张正脸后，这里会写出眼、眉、鼻、唇相对脸的比例。</p>
+        )}
+      </section>
+
+      <section className="analysis-section">
+        <h3>肤色</h3>
+        <p>
+          <strong className="analysis-kicker">{analysis.skinTone}</strong>
+          {skinEvidence(analysis)}
+        </p>
+      </section>
+
+      <section className="analysis-section">
+        <h3>脸型</h3>
+        <p>
+          <strong className="analysis-kicker">{analysis.faceShape}</strong>
+          {cues ? contourMeasurePhrase(cues) : '轮廓比例还没测到。'}
+        </p>
+      </section>
+
+      <section className="analysis-section">
+        <h3>眼型</h3>
+        <p>
+          <strong className="analysis-kicker">{analysis.eyeShape || '待分析'}</strong>
+          {analysis.eyeEvidence || '重新分析后，会根据眼裂宽高和明暗判断桃花眼、杏眼、丹凤眼或深邃眼。'}
+        </p>
+      </section>
+
+      <section className="analysis-section">
+        <h3>适合放大的优点</h3>
+        <ul>
+          {(analysis.strengths.length ? analysis.strengths : ['这次没测出特别适合放大的优点。']).map(
+            (item) => (
+              <li key={item}>{item}</li>
+            ),
+          )}
+        </ul>
+      </section>
+
+      <section className="analysis-section">
+        <h3>需要遮挡的缺点</h3>
+        <ul>
+          {(analysis.weaknesses.length ? analysis.weaknesses : ['这次没测出明显需要遮挡的短板。']).map(
+            (item) => (
+              <li key={item}>{item}</li>
+            ),
+          )}
+        </ul>
+      </section>
+
+      <section className="analysis-section">
+        <h3>适合的风格妆造</h3>
+        {rankedWorks.length === 0 ? (
+          <p className="muted">作品库是空的，没有可推荐的造型。</p>
+        ) : (
+          <ul className="catalog-picks">
+            {rankedWorks.map(({ work, reasons }) => (
+              <li key={work.id}>
+                <strong>{work.title}</strong>
+                <span className="muted">
+                  {' '}
+                  风格 {work.styles.join('、') || '未标'} · 标签 {work.tags.join('、') || '无'}
+                </span>
+                <p>{reasons[0]}</p>
               </li>
             ))}
           </ul>
-        </div>
-      )}
-      {details.length > 0 && (
-        <ul className="feature-list">
-          {details.map((item) => (
-            <li key={item.part}>
-              <strong>{item.part}</strong>
-              <span>{item.text}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+        )}
+        <h3>适合的服装 / 饰品</h3>
+        {rankedInventory.length === 0 ? (
+          <p className="muted">库存是空的，没有可推荐的服装或饰品。</p>
+        ) : (
+          <ul className="catalog-picks">
+            {rankedInventory.map(({ item, reasons }) => (
+              <li key={item.id}>
+                <strong>{item.name}</strong>
+                <span className="muted">
+                  {' '}
+                  {item.category} · 风格 {item.styles.join('、') || '未标'} · 颜色{' '}
+                  {item.colors.join('、') || '未标'}
+                </span>
+                <p>{reasons[0]}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </div>
   );
 }
 
-function ProportionList({
-  cues,
-  faceShape,
-}: {
-  cues: AnalysisCues;
-  faceShape: string;
-}) {
-  const thirds =
-    cues.upperShare > 0
-      ? `三庭上/中/下约 ${pct(cues.upperShare)} / ${pct(cues.midShare)} / ${pct(cues.lowerShare)}`
-      : '三庭没有稳定分开';
-  return (
-    <div className="list-block">
-      <h3>五官比例（相对这张脸）</h3>
-      <ul>
-        <li>眼：暗区宽度约占脸宽 {pct(cues.eyeWidth)}，比面颊暗 {cues.eyeDelta}</li>
-        <li>眉：暗区宽度约占脸宽 {pct(cues.browWidth)}，对比 {cues.browContrast}</li>
-        <li>鼻：亮部约占脸宽 {pct(cues.noseWidth)}，比面颊 {cues.noseHighlight >= 0 ? '亮' : '暗'} {Math.abs(cues.noseHighlight)}</li>
-        <li>
-          唇：色区宽度约占脸宽 {pct(cues.lipWidth)}，厚度约占脸高 {pct(cues.lipHeight)}，红差 {cues.lipRedness}
-        </li>
-        <li>
-          脸：{faceShape}，长宽比 {cues.faceRatio}，{thirds}
-        </li>
-      </ul>
-    </div>
-  );
-}
-
-function VerdictList({
-  title,
-  items,
-  empty,
-}: {
-  title: string;
-  items: string[];
-  empty: string;
-}) {
-  return (
-    <div className="list-block">
-      <h3>{title}</h3>
-      <ul>
-        {(items.length ? items : [empty]).map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </div>
-  );
+function skinEvidence(analysis: FeatureAnalysis): string {
+  const lean =
+    analysis.warmth > 25 ? '红蓝差为正，底色偏暖' : analysis.warmth < 12 ? '红蓝差很小，底色偏冷' : '冷暖居中';
+  return `面颊明度 ${analysis.brightness}，冷暖差 ${analysis.warmth}。${lean}，所以记为${analysis.skinTone}。`;
 }
 
 function pct(n: number | undefined): string {

@@ -256,7 +256,12 @@ export function Sessions() {
                 </div>
                 <div>
                   <h3>五官结论速览（参考）</h3>
-                  <FeatureNotes analysis={active.analysis} works={data.works} />
+                  <FeatureNotes
+                    analysis={active.analysis}
+                    works={data.works}
+                    inventory={data.inventory}
+                    occasion={active.occasion ?? ''}
+                  />
                 </div>
               </div>
 

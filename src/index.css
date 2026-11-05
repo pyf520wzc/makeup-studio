@@ -633,6 +633,52 @@ textarea {
   line-height: 1.65;
 }
 
+.analysis-section {
+  margin: 0 0 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.analysis-section h3 {
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.analysis-section p,
+.analysis-section li {
+  margin: 0 0 6px;
+  line-height: 1.6;
+}
+
+.analysis-kicker {
+  display: inline-block;
+  margin-right: 8px;
+  color: var(--rose-deep);
+  font-size: 1.15rem;
+}
+
+.catalog-picks {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.catalog-picks li {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--line);
+}
+
+.catalog-picks p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .feature-list {
   list-style: none;
   margin: 0 0 12px;
