@@ -633,6 +633,24 @@ textarea {
   line-height: 1.65;
 }
 
+.analysis-summary-block {
+  margin: 0 0 18px;
+  padding: 16px 18px 8px;
+  border-radius: 18px;
+  border: 1px solid var(--blush);
+  background: linear-gradient(180deg, rgba(255, 236, 242, 0.95), rgba(255, 248, 246, 0.9));
+}
+
+.analysis-summary-block h3 {
+  font-size: 1.25rem;
+  margin-bottom: 8px;
+}
+
+.analysis-summary-block h4 {
+  margin: 12px 0 6px;
+  font-size: 0.98rem;
+}
+
 .analysis-section {
   margin: 0 0 14px;
   padding-bottom: 12px;

@@ -92,6 +92,8 @@ export interface AnalysisCues {
   upperShare: number;
   midShare: number;
   lowerShare: number;
+  /** 左右眼暗区之间的空隙 / 脸宽。0 表示没分开 */
+  eyeGap: number;
   usedSkinMask: boolean;
 }
 
@@ -99,6 +101,8 @@ export interface AnalysisCues {
 export interface FeatureVerdict {
   aim: '优点' | '缺点';
   part: FacialFeatureNote['part'];
+  /** 总结里用的短称呼，例如发际线较高、眼距适中 */
+  label: string;
   text: string;
   /** 在作品标题、风格、标签里查找，不对上就不推荐这句 */
   match: string;

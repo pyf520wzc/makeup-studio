@@ -103,6 +103,7 @@ export async function analyzeFaceImage(
     upperShare: proportions.upperShare,
     midShare: proportions.midShare,
     lowerShare: proportions.lowerShare,
+    eyeGap: proportions.eyeGap,
     usedSkinMask,
   };
 
@@ -124,8 +125,8 @@ export async function analyzeFaceImage(
     skinTone,
     round(brightness),
   );
-  const summary = buildSummary(cues, faceShape, skinTone, brightness, warmth, featureDetails);
   const eyeRead = guessEyeShape(cues);
+  const summary = composeSummary(verdicts, faceShape, skinTone, eyeRead.eyeShape, cues);
 
   const confidence = Math.min(
     0.9,
@@ -153,19 +154,19 @@ export async function analyzeFaceImage(
   };
 }
 
-function buildSummary(
-  cues: AnalysisCues,
+function composeSummary(
+  verdicts: FeatureVerdict[],
   faceShape: FaceShape,
   skinTone: SkinTone,
-  brightness: number,
-  warmth: number,
-  details: FacialFeatureNote[],
+  eyeShape: string,
+  cues: AnalysisCues,
 ): string {
-  const source = cues.usedSkinMask
-    ? '已从照片里分离出一块肤色区域，再按这块区域的上下左右分区读取'
-    : '照片里稳定的肤色像素偏少，下面按画面中心估计，建议换一张正脸、光线均匀的照片再看一次';
-  const lead = details.find((d) => d.part === '眼')?.text.split('。')[0] ?? '眼部对比已记录';
-  return `${source}。轮廓倾向${faceShape}（${contourMeasurePhrase(cues)}）。肤色参考${skinTone}，面颊明度 ${round(brightness)}，红蓝差 ${round(warmth)}（正数偏暖）。${lead}。`;
+  const pros = verdicts.filter((item) => item.aim === '优点').map((item) => item.label);
+  const cons = verdicts.filter((item) => item.aim === '缺点').map((item) => item.label);
+  const proText = pros.length ? pros.join('、') : '没有特别突出的优点';
+  const conText = cons.length ? cons.join('、') : '没有明显缺点';
+  const caution = cues.usedSkinMask ? '' : '肤色区域不太稳定，建议再换一张正脸看一次。';
+  return `优点是${proText}；缺点是${conText}。脸型是${faceShape}，眼型是${eyeShape}，肤色是${skinTone}。${caution}`;
 }
 
 function buildDetails(input: {
@@ -306,6 +307,7 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '眼',
+      label: '眼神对比强',
       text: `眼神对比已经够（眼区暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}）。放大做法：眼尾加深、睫毛加密，不要用大片浅色把眼窝盖平。`,
       match: '烟熏|浓密睫毛|眼窝|眼影|眼线',
     });
@@ -313,7 +315,8 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '眼',
-      text: `眼神偏淡（只比面颊暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}）。遮挡做法：先加眼线和卧蚕，再决定要不要铺深色眼影。`,
+      label: '眼神偏淡',
+      text: `眼神偏淡（只比面颊暗 ${cues.eyeDelta}，眼宽约占脸宽 ${pct(cues.eyeWidth)}）。减弱做法：先加眼线和卧蚕，把眼睛提出来，再决定要不要铺深色。`,
       match: '卧蚕|眼线|浓密睫毛|烟熏|眼影',
     });
   }
@@ -322,6 +325,7 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '眉',
+      label: '眉色清楚',
       text: `眉色已经清楚（对比 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}）。放大做法：顺着原眉修齐，不要再加粗一层。`,
       match: '空气眉|眉',
     });
@@ -329,7 +333,8 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '眉',
-      text: `眉色偏淡（对比只有 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}）。遮挡做法：用浅一号的眉色把眉峰补出来，避免整张脸没精神。`,
+      label: '眉色偏淡',
+      text: `眉色偏淡（对比只有 ${cues.browContrast}，眉长约占脸宽 ${pct(cues.browWidth)}）。减弱做法：用浅一号的眉色把眉峰补出来，避免整张脸没精神。`,
       match: '空气眉|眉',
     });
   }
@@ -338,13 +343,15 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '鼻',
-      text: `鼻中偏宽（亮部约占脸宽 ${pct(cues.noseWidth)}）。遮挡做法：鼻影只收在两侧，高光留一条窄线，不要涂满鼻头。`,
+      label: '鼻翼偏宽',
+      text: `鼻中偏宽（亮部约占脸宽 ${pct(cues.noseWidth)}）。减弱做法：鼻影只收在两侧，高光留一条窄线，不要涂满鼻头。`,
       match: '高光|修容|立体',
     });
   } else if (cues.noseHighlight >= 10) {
     verdicts.push({
       aim: '优点',
       part: '鼻',
+      label: '鼻梁有高光',
       text: `鼻梁已经有高光（比面颊亮 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}）。放大做法：高光点在鼻梁中线，范围不要再加宽。`,
       match: '高光|立体',
     });
@@ -352,7 +359,8 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '鼻',
-      text: `鼻梁不够亮（比面颊只差 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}）。遮挡做法：只在山根到鼻尖点一条高光，两侧轻修容。`,
+      label: '鼻梁不够亮',
+      text: `鼻梁不够亮（比面颊只差 ${cues.noseHighlight}，亮部约占脸宽 ${pct(cues.noseWidth)}）。减弱做法：只在山根到鼻尖点一条高光，两侧轻修容。`,
       match: '高光|立体',
     });
   }
@@ -361,6 +369,7 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '唇',
+      label: '唇色明显',
       text: `唇色本身明显（比面颊红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}）。放大做法：正红或豆沙都能显色，把唇线和嘴角收干净。`,
       match: '正红唇|红唇|唇釉|蜜桃唇',
     });
@@ -368,7 +377,8 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '唇',
-      text: `唇色偏淡（比面颊只红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}）。遮挡做法：先把唇色铺匀，再叠蜜桃或正红，裸唇会显没气色。`,
+      label: '唇色偏淡',
+      text: `唇色偏淡（比面颊只红 ${cues.lipRedness}，唇宽约占脸宽 ${pct(cues.lipWidth)}）。减弱做法：先把唇色铺匀，再叠蜜桃或正红，裸唇会显没气色。`,
       match: '正红唇|红唇|唇釉|蜜桃唇',
     });
   }
@@ -377,14 +387,16 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '轮廓',
-      text: `轮廓比较匀（${contourMeasurePhrase(cues)}）。放大做法：按场合选风格即可，不必大面积修容。`,
+      label: '脸型流畅',
+      text: `脸型流畅（${contourMeasurePhrase(cues)}）。放大做法：按场合选风格即可，不必大面积修容。`,
       match: '清透|裸|低对比|日系',
     });
   } else {
     verdicts.push({
       aim: '缺点',
       part: '轮廓',
-      text: `${faceShape}需要收一收（${contourMeasurePhrase(cues)}）。遮挡做法：修容跟着脸型走，圆脸收两侧，长脸把腮红横向铺。`,
+      label: `${faceShape}需修饰`,
+      text: `${faceShape}需要收一收（${contourMeasurePhrase(cues)}）。减弱做法：修容跟着脸型走，圆脸收两侧，长脸把腮红横向铺。`,
       match: '冷淡|立体|修容|高光',
     });
   }
@@ -393,6 +405,7 @@ function buildAdvice(
     verdicts.push({
       aim: '优点',
       part: '肤色',
+      label: '底色亮',
       text: `底色亮（面颊明度 ${brightness}，${skinTone}）。放大做法：底妆走清透，腮红薄薄一层就够。`,
       match: skinTone.includes('冷') ? '冷调|低饱和' : '蜜桃|裸|清透',
     });
@@ -400,7 +413,8 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '肤色',
-      text: `气色要靠唇色托（面颊明度 ${brightness}，${skinTone}）。遮挡做法：别把脸提成另一种肤色，用唇色和薄腮红补气色。`,
+      label: '气色偏淡',
+      text: `气色要靠唇色托（面颊明度 ${brightness}，${skinTone}）。减弱做法：别把脸提成另一种肤色，用唇色和薄腮红补气色。`,
       match: skinTone === '深肤色' || skinTone.includes('暖') ? '蜜桃|红唇|金' : '冷调|低饱和',
     });
   }
@@ -409,16 +423,72 @@ function buildAdvice(
     verdicts.push({
       aim: '缺点',
       part: '轮廓',
-      text: '肤色区域不稳定，比例要再换一张正脸确认',
+      label: '正脸不够稳定',
+      text: '肤色区域不稳定，比例要再换一张正脸确认。',
       match: '清透|裸',
+    });
+  }
+
+  if (cues.upperShare >= 0.32) {
+    verdicts.push({
+      aim: '优点',
+      part: '轮廓',
+      label: '发际线较高',
+      text: `发际线较高，上庭约占脸高 ${pct(cues.upperShare)}，额头留得开。放大做法：眉峰不要再往上提，避免把脸拉得更长。`,
+      match: '清透|空气眉|低对比',
+    });
+  } else if (cues.upperShare > 0 && cues.upperShare <= 0.18) {
+    verdicts.push({
+      aim: '缺点',
+      part: '轮廓',
+      label: '发际线偏低',
+      text: `发际线偏低，上庭只约占脸高 ${pct(cues.upperShare)}。减弱做法：眉峰略挑，额前少堆厚刘海。`,
+      match: '空气眉|眉',
+    });
+  }
+
+  if (cues.eyeGap >= 0.2) {
+    verdicts.push({
+      aim: '缺点',
+      part: '眼',
+      label: '眼距偏宽',
+      text: `眼距偏宽，两眼之间约占脸宽 ${pct(cues.eyeGap)}。减弱做法：眼头轻点，眼尾不要再往外拉太开。`,
+      match: '眼线|卧蚕',
+    });
+  } else if (cues.eyeGap > 0 && cues.eyeGap <= 0.09) {
+    verdicts.push({
+      aim: '缺点',
+      part: '眼',
+      label: '眼距偏窄',
+      text: `眼距偏窄，两眼之间只约占脸宽 ${pct(cues.eyeGap)}。减弱做法：眼尾向外带，眼头不要画得太近。`,
+      match: '眼线|烟熏',
+    });
+  } else if (cues.eyeGap > 0.09) {
+    verdicts.push({
+      aim: '优点',
+      part: '眼',
+      label: '眼距适中',
+      text: `眼距适中，两眼之间约占脸宽 ${pct(cues.eyeGap)}。放大做法：按眼型画即可，不必刻意改眼距。`,
+      match: '清透|卧蚕|眼线',
+    });
+  }
+
+  const eyeName = guessEyeShape(cues).eyeShape;
+  if (['深邃眼', '丹凤眼', '桃花眼', '杏眼', '圆眼'].includes(eyeName)) {
+    verdicts.unshift({
+      aim: '优点',
+      part: '眼',
+      label: eyeName,
+      text: `${eyeName}。放大做法：顺着这个眼型画。深邃眼加深眼尾，桃花眼和杏眼保持眼尾轻开，圆眼把眼尾略拉长。`,
+      match: eyeName === '深邃眼' || eyeName === '丹凤眼' ? '烟熏|浓密睫毛|眼窝|眼线' : '卧蚕|眼线|清透',
     });
   }
 
   const strengths = verdicts.filter((item) => item.aim === '优点').map((item) => item.text);
   const weaknesses = verdicts.filter((item) => item.aim === '缺点').map((item) => item.text);
   return {
-    strengths: strengths.slice(0, 4),
-    weaknesses: weaknesses.slice(0, 4),
+    strengths,
+    weaknesses,
     directions: [],
     verdicts,
   };
@@ -481,6 +551,7 @@ function measureProportions(
   upperShare: number;
   midShare: number;
   lowerShare: number;
+  eyeGap: number;
 } {
   const eye = spanWhere(data, imgW, box, 0.28, 0.48, (r, g, b) => lumOf(r, g, b) < cheekLum - 18);
   const brow = spanWhere(
@@ -518,7 +589,41 @@ function measureProportions(
     upperShare,
     midShare,
     lowerShare,
+    eyeGap: measureEyeGap(data, imgW, box, cheekLum),
   };
+}
+
+function measureEyeGap(
+  data: Uint8ClampedArray,
+  imgW: number,
+  box: Box,
+  cheekLum: number,
+): number {
+  if (box.w < 8 || box.h < 8) return 0;
+  const y0 = clamp(Math.floor(box.y + box.h * 0.3), 0, 100000);
+  const y1 = clamp(Math.floor(box.y + box.h * 0.46), y0 + 1, 100000);
+  const mid = box.x + box.w / 2;
+  let leftMax = -1;
+  let rightMin = Infinity;
+  let leftN = 0;
+  let rightN = 0;
+  for (let y = y0; y < y1; y += 2) {
+    if (y * imgW >= data.length / 4) break;
+    for (let x = box.x; x < box.x + box.w; x += 2) {
+      const i = (y * imgW + x) * 4;
+      if (i < 0 || i + 3 >= data.length || data[i + 3] < 128) continue;
+      if (lumOf(data[i], data[i + 1], data[i + 2]) >= cheekLum - 18) continue;
+      if (x < mid) {
+        leftN++;
+        if (x > leftMax) leftMax = x;
+      } else {
+        rightN++;
+        if (x < rightMin) rightMin = x;
+      }
+    }
+  }
+  if (leftN < 6 || rightN < 6 || rightMin <= leftMax) return 0;
+  return round2((rightMin - leftMax) / box.w);
 }
 
 function spanWhere(

@@ -19,7 +19,7 @@ export interface ScoredInventory {
 }
 
 export interface CatalogMove {
-  aim: '放大优点' | '遮盖缺点';
+  aim: '需要放大的优点' | '需要减弱的缺点';
   feature: string;
   work: WorkItem | null;
 }
@@ -129,8 +129,8 @@ function scoreWork(
 /** 每条优缺点只指向图库里真实存在的作品；对不上就明确说没有。 */
 export function catalogMoves(analysis: FeatureAnalysis, works: WorkItem[]): CatalogMove[] {
   return (analysis.verdicts ?? []).map((verdict) => ({
-    aim: verdict.aim === '优点' ? '放大优点' : '遮盖缺点',
-    feature: verdict.text,
+    aim: verdict.aim === '优点' ? '需要放大的优点' : '需要减弱的缺点',
+    feature: verdict.label || verdict.text,
     work: bestCatalogWork(works, analysis, verdict.match),
   }));
 }
@@ -144,8 +144,12 @@ function workCatalogReason(
   if (!hit) {
     return `图库作品${cite}没有对上这次测到的优缺点，只作备选，不另造妆容。`;
   }
-  const aim = hit.aim === '优点' ? '放大优点' : '遮盖缺点';
-  return `${aim}「${hit.text}」：用图库里的${cite}。`;
+  const aim = hit.aim === '优点' ? '需要放大的优点' : '需要减弱的缺点';
+  const labels = (matched ?? [])
+    .filter((item) => item.aim === hit.aim && item.label)
+    .map((item) => item.label);
+  const name = labels.length ? [...new Set(labels)].slice(0, 3).join('、') : hit.label || hit.text;
+  return `推荐理由：对上总结里的${aim}「${name}」。用图库里的${cite}。`;
 }
 
 function workFitNote(
