@@ -65,20 +65,41 @@ export interface FacialFeatureNote {
   text: string;
 }
 
-/** 供推荐理由引用的测量值，单位为 0–255 明度或相对比例 */
+/** 供推荐理由引用的测量值。宽度、高度、三庭都是相对这张脸的比例（0–1） */
 export interface AnalysisCues {
   eyeDelta: number;
   eyeContrast: number;
   eyeAsymmetry: number;
+  /** 眼部暗区宽度 / 脸宽 */
+  eyeWidth: number;
   browContrast: number;
+  /** 眉部暗区宽度 / 脸宽 */
+  browWidth: number;
   noseHighlight: number;
   noseWidth: number;
   lipRedness: number;
+  /** 唇色区域宽度 / 脸宽 */
+  lipWidth: number;
+  /** 唇色区域高度 / 脸高 */
+  lipHeight: number;
   faceRatio: number;
   foreheadWidth: number;
   cheekWidth: number;
   jawWidth: number;
+  /** 三庭：眉以上 / 眉到唇 / 唇以下，相对脸高 */
+  upperShare: number;
+  midShare: number;
+  lowerShare: number;
   usedSkinMask: boolean;
+}
+
+/** 一条可被图库作品对上的优点或缺点 */
+export interface FeatureVerdict {
+  aim: '优点' | '缺点';
+  part: FacialFeatureNote['part'];
+  text: string;
+  /** 在作品标题、风格、标签里查找，不对上就不推荐这句 */
+  match: string;
 }
 
 export interface FeatureAnalysis {
@@ -93,6 +114,8 @@ export interface FeatureAnalysis {
   featureDetails?: FacialFeatureNote[];
   /** 分区测量，推荐文案会引用这些数字 */
   cues?: AnalysisCues;
+  /** 优缺点，以及用来对照图库的匹配词 */
+  verdicts?: FeatureVerdict[];
   brightness: number;
   warmth: number;
   contrast: number;

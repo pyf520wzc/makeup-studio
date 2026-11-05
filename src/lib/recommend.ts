@@ -1,4 +1,3 @@
-import { contourMeasurePhrase } from './faceAnalysis';
 import type {
   FeatureAnalysis,
   InventoryItem,
@@ -17,6 +16,12 @@ export interface ScoredInventory {
   item: InventoryItem;
   score: number;
   reasons: string[];
+}
+
+export interface CatalogMove {
+  aim: '放大优点' | '遮盖缺点';
+  feature: string;
+  work: WorkItem | null;
 }
 
 export function recommendWorks(
@@ -41,8 +46,6 @@ export function recommendInventory(
       ? [preferredOccasion]
       : topWorks.flatMap((w) => w.occasions),
   );
-  const topTitles = topWorks.slice(0, 2).map((w) => w.title);
-
   return inventory
     .map((item) => {
       let score = 40;
@@ -74,10 +77,7 @@ export function recommendInventory(
         score += 8;
       }
 
-      reasons.push(faceClause(analysis, item));
-      reasons.push(colorClause(analysis, item));
-      reasons.push(styleClause(item, stylePool, topTitles, styleHit));
-      reasons.push(occasionClause(item, preferredOccasion, occHit));
+      reasons.push(inventoryReason(analysis, item, topWorks, preferredOccasion, occHit));
 
       return { item, score: Math.min(99, score), reasons: unique(reasons) };
     })
@@ -104,7 +104,6 @@ function scoreWork(
   );
   if (occasionOk) score += 18;
 
-  const cues = analysis.cues;
   for (const style of work.styles) {
     if (styleBoost(style, analysis, preferredOccasion)) {
       score += 8;
@@ -112,17 +111,13 @@ function scoreWork(
   }
   if (analysis.faceShape === '圆脸' && work.styles.includes('冷淡高级')) score += 4;
   if (analysis.faceShape === '方脸' && work.styles.includes('韩系甜美')) score += 4;
-  if ((cues?.eyeDelta ?? 0) > 24 && work.styles.includes('欧美立体')) score += 4;
-  if ((cues?.lipRedness ?? 0) > 8 && work.styles.includes('复古红唇')) score += 4;
-  if ((cues?.eyeDelta ?? 99) < 16 && work.styles.includes('清透自然')) score += 4;
+  const matched = matchingVerdicts(analysis, work);
+  if (matched.some((item) => item.aim === '缺点')) score += 14;
+  else if (matched.some((item) => item.aim === '优点')) score += 8;
 
-  reasons.push(workFaceReason(analysis, work, faceOk));
-  reasons.push(workToneReason(analysis, work, toneOk));
-  reasons.push(workOccasionReason(work, preferredOccasion, occasionOk));
-  const styleReason = work.styles
-    .map((style) => styleSentence(style, analysis, preferredOccasion))
-    .find(Boolean);
-  if (styleReason) reasons.push(styleReason);
+  reasons.push(workCatalogReason(work, matched));
+  if (preferredOccasion) reasons.push(workOccasionReason(work, preferredOccasion, occasionOk));
+  if (!faceOk || !toneOk) reasons.push(workFitNote(analysis, work, faceOk, toneOk));
 
   return {
     work,
@@ -131,19 +126,38 @@ function scoreWork(
   };
 }
 
-function workFaceReason(analysis: FeatureAnalysis, work: WorkItem, faceOk: boolean): string {
-  const measured = analysis.cues ? `${contourMeasurePhrase(analysis.cues)}，` : '';
-  if (faceOk) {
-    return `脸型倾向${analysis.faceShape}（${measured}照片分区结果）。「${work.title}」标明适合这个脸型，妆面修饰方向和轮廓一致。`;
-  }
-  return `脸型倾向${analysis.faceShape}（${measured}照片分区结果）。「${work.title}」没有把这个脸型列为适合项，可以当风格参考，不要当成首选修饰。`;
+/** 每条优缺点只指向图库里真实存在的作品；对不上就明确说没有。 */
+export function catalogMoves(analysis: FeatureAnalysis, works: WorkItem[]): CatalogMove[] {
+  return (analysis.verdicts ?? []).map((verdict) => ({
+    aim: verdict.aim === '优点' ? '放大优点' : '遮盖缺点',
+    feature: verdict.text,
+    work: bestCatalogWork(works, analysis, verdict.match),
+  }));
 }
 
-function workToneReason(analysis: FeatureAnalysis, work: WorkItem, toneOk: boolean): string {
-  const base = `肤色参考${analysis.skinTone}，面颊明度 ${analysis.brightness}，冷暖差 ${analysis.warmth}。`;
-  if (toneOk) return `${base}这套标注了该肤色，底妆冷暖不用大改。`;
-  const listed = work.suitableTones.join('、') || '未标注';
-  return `${base}作品适合的是${listed}，和当前判断不完全重合，试色时先对一下底妆冷暖。`;
+function workCatalogReason(
+  work: WorkItem,
+  matched: FeatureAnalysis['verdicts'],
+): string {
+  const cite = citeWork(work);
+  const hit = matched?.find((item) => item.aim === '缺点') ?? matched?.[0];
+  if (!hit) {
+    return `图库作品${cite}没有对上这次测到的优缺点，只作备选，不另造妆容。`;
+  }
+  const aim = hit.aim === '优点' ? '放大优点' : '遮盖缺点';
+  return `${aim}「${hit.text}」：用图库里的${cite}。`;
+}
+
+function workFitNote(
+  analysis: FeatureAnalysis,
+  work: WorkItem,
+  faceOk: boolean,
+  toneOk: boolean,
+): string {
+  const bits: string[] = [];
+  if (!faceOk) bits.push(`脸型${analysis.faceShape}不在这套适合脸型里`);
+  if (!toneOk) bits.push(`肤色${analysis.skinTone}不在这套适合肤色里`);
+  return `「${work.title}」${bits.join('，')}，修饰效果要减一档。`;
 }
 
 function workOccasionReason(
@@ -160,41 +174,74 @@ function workOccasionReason(
   return `这次没有指定场合，按作品自己的场合（${work.occasions.join('、')}）来用。`;
 }
 
-function styleSentence(
-  style: MakeupStyle,
+function inventoryReason(
   analysis: FeatureAnalysis,
-  occasion?: Occasion | '',
-): string | null {
-  const eye = analysis.cues?.eyeDelta;
-  const lip = analysis.cues?.lipRedness;
-  switch (style) {
-    case '清透自然':
-      return eye !== undefined && eye < 22
-        ? `眼周和面颊只差约 ${eye}，清透妆不会把眼神压暗，适合这张照片的低对比。`
-        : '清透路线保留原有肤质，眼妆点到为止。';
-    case '韩系甜美':
-      return `${analysis.faceShape}用韩系甜妆时，腮红和卧蚕增加亲和，面中修容不用很重。`;
-    case '冷淡高级':
-      return `冷淡妆用低饱和和清楚的轮廓，贴合现在的${analysis.skinTone}底色。`;
-    case '欧美立体':
-      return eye !== undefined && eye > 18
-        ? `眼区比面颊暗约 ${eye}，立体眼妆能接住这份对比。`
-        : '眼区对比不强，立体妆要靠眉骨高光和睫毛把眼睛提起来。';
-    case '复古红唇':
-      return lip !== undefined && lip > 6
-        ? `唇色比面颊更红（差值约 ${lip}），正红唇容易显色。`
-        : `唇色相对含蓄（与面颊红差约 ${lip ?? 0}），复古红唇要先把唇色补匀。`;
-    case '新娘妆':
-      return occasion === '婚礼'
-        ? '客人场合是婚礼，新娘妆的柔光和持久度对得上这个场合。'
-        : '新娘妆强调干净底妆和耐看的眼唇，正式场合可以借用。';
-    case '日系可爱':
-      return '日系淡颜走轻眉、低对比，适合想要空气感、少盖住皮肤的客人。';
-    case '国潮戏曲':
-      return '国潮浓彩用高饱和眼唇，适合舞台和写真；日常和职场不要直接照搬。';
-    default:
-      return null;
+  item: InventoryItem,
+  topWorks: WorkItem[],
+  occasion: Occasion | '' | undefined,
+  occHit: boolean,
+): string {
+  const itemCite = `库存「${item.name}」（${item.category}，风格 ${item.styles.join('、') || '未标'}，颜色 ${item.colors.join('、') || '未标'}，场合 ${item.occasions.join('、') || '未标'}）`;
+  const move =
+    catalogMoves(analysis, topWorks).find((entry) => entry.work && itemSupports(item, entry.work)) ??
+    catalogMoves(analysis, topWorks).find((entry) => entry.work) ??
+    null;
+  if (!move?.work) {
+    return `${itemCite}对不上这次测到的优缺点，也没有能配上的图库妆造。`;
   }
+  const occasionNote =
+    occasion && !occHit ? `场合「${occasion}」和这件不完全重合。` : '';
+  return `${move.aim}「${move.feature}」：${itemCite}，配图库作品${citeWork(move.work)}。${occasionNote}`;
+}
+
+function itemSupports(item: InventoryItem, work: WorkItem): boolean {
+  const blob = `${item.name} ${item.styles.join(' ')} ${item.colors.join(' ')} ${item.occasions.join(' ')}`;
+  return work.styles.some((style) => blob.includes(style.slice(0, 2))) ||
+    work.occasions.some((occasion) => item.occasions.includes(occasion));
+}
+
+function matchingVerdicts(analysis: FeatureAnalysis, work: WorkItem) {
+  return (analysis.verdicts ?? []).filter(
+    (verdict) => keywordScore(workBlob(work), verdict.match) > 0,
+  );
+}
+
+function bestCatalogWork(works: WorkItem[], analysis: FeatureAnalysis, match: string): WorkItem | null {
+  let best: WorkItem | null = null;
+  let bestScore = 0;
+  for (const work of works) {
+    const hit = keywordScore(workBlob(work), match);
+    if (!hit) continue;
+    let score = hit * 5;
+    if (work.suitableFaces.includes(analysis.faceShape)) score += 1;
+    if (work.suitableTones.includes(analysis.skinTone)) score += 1;
+    if (score > bestScore) {
+      best = work;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function keywordScore(blob: string, source: string): number {
+  const parts = source.split('|').filter(Boolean);
+  let best = 0;
+  parts.forEach((part, index) => {
+    if (!blob.includes(part)) return;
+    if (part === '睫毛' && blob.includes('轻睫毛') && !blob.includes('浓密睫毛')) return;
+    best = Math.max(best, parts.length - index);
+  });
+  return best;
+}
+
+function workBlob(work: WorkItem): string {
+  return [work.title, work.makeupType, ...work.styles, ...work.tags].join(' ');
+}
+
+function citeWork(work: WorkItem): string {
+  const styles = work.styles.join('、') || '未标风格';
+  const tags = work.tags.join('、') || '无标签';
+  return `「${work.title}」（风格 ${styles}，标签 ${tags}）`;
 }
 
 function styleBoost(
@@ -202,82 +249,16 @@ function styleBoost(
   analysis: FeatureAnalysis,
   occasion?: Occasion | '',
 ): boolean {
-  const text = `${analysis.directions.join(' ')} ${analysis.strengths.join(' ')} ${analysis.summary ?? ''}`;
-  if (style === '清透自然' && /清透|低对比|空气|裸/.test(text)) return true;
-  if (style === '冷淡高级' && /冷|高级|低饱和/.test(text)) return true;
-  if (style === '韩系甜美' && /甜|亲和|腮红/.test(text)) return true;
-  if (style === '复古红唇' && /红唇|唇色/.test(text)) return true;
-  if (style === '欧美立体' && /立体|眼妆|眼周/.test(text)) return true;
+  const text = `${analysis.strengths.join(' ')} ${analysis.weaknesses.join(' ')} ${(analysis.verdicts ?? []).map((item) => item.match).join(' ')}`;
+  if (style === '清透自然' && /清透|裸|低对比/.test(text)) return true;
+  if (style === '冷淡高级' && /冷淡|冷调|低饱和/.test(text)) return true;
+  if (style === '韩系甜美' && /蜜桃|甜美|卧蚕/.test(text)) return true;
+  if (style === '复古红唇' && /红唇|唇/.test(text)) return true;
+  if (style === '欧美立体' && /立体|烟熏|高光/.test(text)) return true;
   if (style === '新娘妆' && occasion === '婚礼') return true;
-  if (style === '日系可爱' && /空气|淡/.test(text)) return true;
+  if (style === '日系可爱' && /空气|眉/.test(text)) return true;
+  if (style === '国潮戏曲' && /高饱和|红唇|金/.test(text)) return true;
   return false;
-}
-
-function faceClause(analysis: FeatureAnalysis, item: InventoryItem): string {
-  const who = `客人是${analysis.faceShape}、${analysis.skinTone}`;
-  if (item.category !== '服装') {
-    return `${who}。${item.category}「${item.name}」靠近脸，体量要让给妆，不要再叠一圈很宽的装饰。`;
-  }
-  let cut = '裙形完整，妆面保持清楚就够。';
-  if (/立领|高领/.test(item.name)) cut = '立领把锁骨收住，重点放在眼和唇，不用再加长项链。';
-  else if (/V/.test(item.name)) cut = 'V 领露出锁骨，颈饰选细的，耳饰可以略亮。';
-  else if (/吊带|抹胸/.test(item.name)) cut = '肩颈露得多，耳环和妆面会更显眼。';
-  else if (/鱼尾/.test(item.name)) cut = '鱼尾先收腰再散开，妆不用往两边铺得很宽。';
-  else if (/长袖/.test(item.name)) cut = '长袖盖住手臂，手部只留细饰品，避免和袖口花纹抢。';
-  else if (/缎/.test(item.name)) cut = '缎面有光，底妆宜薄，避免脸和衣服两处反光。';
-  else if (/蓝|晚礼/.test(item.name)) cut = '这是晚宴长裙，不是白纱，妆可以比婚礼主妆更浓一点。';
-  else if (/纱裙|蓬裙/.test(item.name)) cut = '纱裙体积大，妆保持干净，免得和裙摆一起抢。';
-  else if (/蕾丝/.test(item.name)) cut = '蕾丝本身有花纹，妆和首饰都收一点。';
-  return `${who}。「${item.name}」${cut}`;
-}
-
-function colorClause(analysis: FeatureAnalysis, item: InventoryItem): string {
-  const colors = item.colors.join('、') || '未标色';
-  const tone = analysis.skinTone;
-  const hasWhite = item.colors.some((c) => /象牙|白/.test(c));
-  const coolColor = item.colors.some((c) => /银|粉|紫|蓝|雾/.test(c));
-  const warmColor = item.colors.some((c) => /金|香槟|橘|红|咖/.test(c));
-  if (hasWhite && !item.colors.some((c) => /蓝|黑/.test(c))) {
-    return `主色「${colors}」接近白或象牙，${tone}都能穿，冷暖交给妆面，不用为了衣服改肤色。`;
-  }
-  if (tone.includes('冷') && coolColor) {
-    return `配色「${colors}」偏冷，和${tone}是同一边，不容易和底妆打架。`;
-  }
-  if ((tone.includes('暖') || tone === '暖黄皮') && warmColor) {
-    return `配色「${colors}」偏暖，能托住${tone}。`;
-  }
-  if (tone === '深肤色' && (warmColor || hasWhite)) {
-    return `「${colors}」在深肤色上对比清楚，金银和白都站得住。`;
-  }
-  return `配色是${colors}，和参考肤色${tone}不是最贴的一组，适合当对比色试穿，不要当成唯一选择。`;
-}
-
-function styleClause(
-  item: InventoryItem,
-  stylePool: Set<string>,
-  topTitles: string[],
-  styleHit: boolean,
-): string {
-  const styles = item.styles.join('、') || '未标风格';
-  const looks = topTitles.length ? topTitles.join('、') : '当前推荐妆造';
-  if (styleHit) {
-    return `风格关键词「${styles}」和推荐妆造（${looks}，风格 ${[...stylePool].slice(0, 3).join('、') || '未定'}）说得上话，可以配成一套。`;
-  }
-  return `风格关键词是「${styles}」，和推荐妆造（${looks}）没有直接撞上，留作换风格时的备选。`;
-}
-
-function occasionClause(
-  item: InventoryItem,
-  occasion: Occasion | '' | undefined,
-  occHit: boolean,
-): string {
-  if (occasion && occHit) {
-    return `客人场合是${occasion}，这件覆盖该场合。`;
-  }
-  if (occasion) {
-    return `客人场合是${occasion}，这件标的是${item.occasions.join('、')}，场合不是最贴。`;
-  }
-  return `没有单独指定场合，按单品场合（${item.occasions.join('、')}）搭配。`;
 }
 
 function unique(arr: string[]): string[] {

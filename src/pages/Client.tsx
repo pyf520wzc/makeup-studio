@@ -317,7 +317,7 @@ export function Client() {
                     置信度约 {Math.round(session.analysis.confidence * 100)}%
                   </span>
                 </div>
-                <FeatureNotes analysis={session.analysis} />
+                <FeatureNotes analysis={session.analysis} works={data.works} />
                 <div className="cta-row">
                   <button
                     type="button"

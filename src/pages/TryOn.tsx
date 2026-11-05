@@ -294,7 +294,7 @@ export function TryOn() {
             {activeSession.analysis.skinTone}
             {activeSession.occasion ? ` · ${activeSession.occasion}` : ''}
           </summary>
-          <FeatureNotes analysis={activeSession.analysis} />
+          <FeatureNotes analysis={activeSession.analysis} works={data.works} />
         </details>
       )}
 
