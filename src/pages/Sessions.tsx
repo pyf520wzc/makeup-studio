@@ -295,6 +295,13 @@ export function Sessions() {
                     )}
                   </div>
 
+                  {active.tryOnResultDataUrl && (
+                    <figure className="tryon-result-figure">
+                      <img src={active.tryOnResultDataUrl} alt="试妆效果图" />
+                      <figcaption>试妆效果图 · 确认成套时保存的合成预览</figcaption>
+                    </figure>
+                  )}
+
                   {active.outfit?.workId && workMap[active.outfit.workId] && (
                     <div className="confirmed-hero">
                       <img

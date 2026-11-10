@@ -2,25 +2,31 @@ import { FaceLandmarker, FilesetResolver, type FaceLandmarker as FaceLandmarkerT
 
 export type Pt = { x: number; y: number };
 
-const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.2/wasm';
-const MODEL =
+const LOCAL_WASM = '/mediapipe';
+const LOCAL_MODEL = '/mediapipe/face_landmarker.task';
+const CDN_WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.2/wasm';
+const CDN_MODEL =
   'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 
 let landmarkerPromise: Promise<FaceLandmarkerType> | null = null;
 const cache = new Map<string, Pt[] | null>();
 
+async function createLandmarker(wasmBase: string, modelPath: string): Promise<FaceLandmarkerType> {
+  const fileset = await FilesetResolver.forVisionTasks(wasmBase);
+  return FaceLandmarker.createFromOptions(fileset, {
+    baseOptions: { modelAssetPath: modelPath, delegate: 'CPU' },
+    runningMode: 'IMAGE',
+    numFaces: 1,
+    outputFaceBlendshapes: false,
+    outputFacialTransformationMatrixes: false,
+  });
+}
+
 export function loadFaceLandmarker(): Promise<FaceLandmarkerType> {
   if (!landmarkerPromise) {
-    landmarkerPromise = (async () => {
-      const fileset = await FilesetResolver.forVisionTasks(WASM);
-      return FaceLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: MODEL, delegate: 'CPU' },
-        runningMode: 'IMAGE',
-        numFaces: 1,
-        outputFaceBlendshapes: false,
-        outputFacialTransformationMatrixes: false,
-      });
-    })().catch((error) => {
+    landmarkerPromise = createLandmarker(LOCAL_WASM, LOCAL_MODEL).catch(() =>
+      createLandmarker(CDN_WASM, CDN_MODEL),
+    ).catch((error) => {
       landmarkerPromise = null;
       throw error;
     });

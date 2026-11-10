@@ -8,6 +8,8 @@ type Props = {
   accessories: InventoryItem[];
   makeupOpacity: number;
   clothingOpacity: number;
+  /** 每次画完效果图后回传 JPEG，供保存和还原台展示 */
+  onResult?: (dataUrl: string) => void;
 };
 
 /**
@@ -21,16 +23,40 @@ export function TryOnPreview({
   accessories,
   makeupOpacity,
   clothingOpacity,
+  onResult,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const onResultRef = useRef(onResult);
   const [status, setStatus] = useState('');
   const [simulated, setSimulated] = useState(false);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !faceUrl) return;
+    onResultRef.current = onResult;
     const token = { cancel: false };
     setStatus('正在按五官位置对齐…');
+
+    const publish = () => {
+      try {
+        onResultRef.current?.(canvas.toDataURL('image/jpeg', 0.82));
+      } catch {
+        /* canvas may be tainted; ignore */
+      }
+    };
+
+    const paintFaceNow = (img: HTMLImageElement) => {
+      const maxW = 720;
+      const scale = Math.min(1, maxW / Math.max(1, img.naturalWidth));
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.fillStyle = '#f6ebe6';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      publish();
+    };
 
     (async () => {
       try {
@@ -38,15 +64,14 @@ export function TryOnPreview({
         const { paintTryOn } = await import('../lib/tryOnRender');
         if (token.cancel) return;
         const userImg = await loadHtmlImage(faceUrl);
+        if (token.cancel) return;
+        paintFaceNow(userImg);
         const userLm = await detectFacePixels(faceUrl);
         if (token.cancel) return;
         if (!userLm) {
           setSimulated(false);
-          setStatus('没有识别到正脸，妆面和服装不会错位贴上。请换一张五官清楚的照片。');
-          const ctx = canvas.getContext('2d');
-          canvas.width = userImg.naturalWidth;
-          canvas.height = userImg.naturalHeight;
-          ctx?.drawImage(userImg, 0, 0);
+          setStatus('没有识别到正脸。已显示原图，妆面和服装不会错位贴上。');
+          paintFaceNow(userImg);
           return;
         }
 
@@ -74,21 +99,31 @@ export function TryOnPreview({
         );
         if (token.cancel) return;
         setSimulated(result.simulated);
+        publish();
         if (work && !workLm) {
-          setStatus('这套造型照片里没有识别到脸，妆面没有贴上，避免贴错位置。');
+          setStatus('这套造型照片里没有识别到脸，已保留顾客照片，妆面没有贴错位置。');
         } else {
           setStatus('');
         }
       } catch (error) {
         console.error(error);
-        if (!token.cancel) setStatus('五官定位暂时不可用，请检查网络后重试。');
+        if (!token.cancel) {
+          setStatus('五官定位暂时不可用，已显示上传的照片。');
+          if (canvas.width < 32) {
+            const img = new Image();
+            img.onload = () => {
+              if (!token.cancel) paintFaceNow(img);
+            };
+            img.src = faceUrl;
+          }
+        }
       }
     })();
 
     return () => {
       token.cancel = true;
     };
-  }, [faceUrl, work, clothing, accessories, makeupOpacity, clothingOpacity]);
+  }, [faceUrl, work, clothing, accessories, makeupOpacity, clothingOpacity, onResult]);
 
   if (!faceUrl) {
     return (

@@ -901,6 +901,22 @@ textarea {
   gap: 8px;
 }
 
+.tryon-result-figure {
+  margin: 12px 0 0;
+}
+
+.tryon-result-figure img {
+  width: min(280px, 100%);
+  border-radius: 16px;
+  display: block;
+}
+
+.tryon-result-figure figcaption {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .tryon-sim-banner,
 .tryon-status {
   margin: 0;
