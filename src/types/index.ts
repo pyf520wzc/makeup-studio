@@ -144,6 +144,8 @@ export interface ClientSession {
   selectedInventoryIds: string[];
   /** 最近一次试妆成套（造型+服装+饰品） */
   outfit?: OutfitSelection;
+  /** 试妆合成效果图（JPEG data URL） */
+  tryOnResultDataUrl?: string;
   /** 草稿 / 已确认成套 */
   status?: SessionStatus;
   /** 确认成套时间 */

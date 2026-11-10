@@ -245,8 +245,8 @@ function paintMakeup(
     }
   }
   ctx.save();
-  ctx.globalAlpha = opacity * 0.85;
-  ctx.globalCompositeOperation = 'soft-light';
+  ctx.globalAlpha = Math.min(1, Math.max(opacity, 0.72));
+  ctx.globalCompositeOperation = 'overlay';
   ctx.drawImage(layer, 0, 0);
   ctx.restore();
 
@@ -310,7 +310,7 @@ function paintGarment(
   ctx.lineTo(destX + destW * 0.06, destY + destH);
   ctx.closePath();
   ctx.clip();
-  ctx.globalAlpha = opacity;
+  ctx.globalAlpha = Math.min(1, Math.max(opacity, 0.94));
   ctx.drawImage(img, sx, sy, sw, sh, destX, destY, destW, destH);
   ctx.restore();
 }

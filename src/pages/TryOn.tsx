@@ -31,8 +31,9 @@ export function TryOn() {
   const [workId, setWorkId] = useState<string | null>(null);
   const [clothingId, setClothingId] = useState<string | null>(null);
   const [accessoryIds, setAccessoryIds] = useState<string[]>([]);
-  const [makeupOpacity, setMakeupOpacity] = useState(0.72);
-  const [clothingOpacity, setClothingOpacity] = useState(0.88);
+  const [makeupOpacity, setMakeupOpacity] = useState(0.9);
+  const [clothingOpacity, setClothingOpacity] = useState(0.96);
+  const [resultUrl, setResultUrl] = useState('');
   const [workSource, setWorkSource] = useState<SourceFilter>('recommended');
   const [invSource, setInvSource] = useState<SourceFilter>('recommended');
   const [dirty, setDirty] = useState(false);
@@ -205,12 +206,26 @@ export function TryOn() {
     upsertSession({
       ...activeSession,
       ...buildOutfitPayload(),
+      tryOnResultDataUrl: resultUrl || activeSession.tryOnResultDataUrl,
       status: 'draft',
     });
     trackEvent('outfit_draft_saved', { sessionId: activeSession.id });
     setTick((t) => t + 1);
     setDirty(false);
     setToast('草稿已保存（未确认）');
+  };
+
+  const downloadResult = () => {
+    const url = resultUrl;
+    if (!url) {
+      setToast('效果图还在生成，请稍等再下载');
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `试妆效果图-${activeSession?.name || 'look'}.jpg`;
+    a.click();
+    setToast('已下载效果图');
   };
 
   const confirmOutfit = () => {
@@ -235,6 +250,7 @@ export function TryOn() {
     upsertSession({
       ...activeSession,
       ...buildOutfitPayload(),
+      tryOnResultDataUrl: resultUrl || activeSession.tryOnResultDataUrl,
       status: 'confirmed',
       confirmedAt,
     });
@@ -420,6 +436,17 @@ export function TryOn() {
         </aside>
 
         <section className="panel tryon-preview-wrap">
+          <div className="section-head" style={{ width: '100%', marginBottom: 8 }}>
+            <h3 style={{ margin: 0 }}>效果图</h3>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={downloadResult}
+              disabled={!resultUrl}
+            >
+              下载效果图
+            </button>
+          </div>
           <TryOnPreview
             faceUrl={faceUrl}
             work={selectedWork}
@@ -427,6 +454,7 @@ export function TryOn() {
             accessories={selectedAccessories}
             makeupOpacity={makeupOpacity}
             clothingOpacity={clothingOpacity}
+            onResult={setResultUrl}
           />
           <p className="muted tryon-hint">
             <Sparkles size={14} style={{ verticalAlign: '-2px' }} />{' '}
