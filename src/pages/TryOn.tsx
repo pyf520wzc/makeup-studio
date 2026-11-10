@@ -430,7 +430,7 @@ export function TryOn() {
           />
           <p className="muted tryon-hint">
             <Sparkles size={14} style={{ verticalAlign: '-2px' }} />{' '}
-            切换下方造型/服装/饰品时，预览会实时更新
+            妆面按识别到的眼、眉、鼻、唇对齐；近景头像会生成全身预览再穿上服装
           </p>
           <ClipRow
             clips={[
